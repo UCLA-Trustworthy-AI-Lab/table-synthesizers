@@ -1,9 +1,9 @@
-import torch
-import dask.dataframe as dd
-import numpy as np 
-from base import BaseSynthesizer
+from .base import BaseSynthesizer
+from .identity import Identity
 
-DEFAULT_MODELS = {}
+DEFAULT_MODELS = {"Identity":Identity}
+
+VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
 class TableSynthesizer:
     """
@@ -17,27 +17,26 @@ class TableSynthesizer:
     """
 
     _DEFAULT_MODELS = DEFAULT_MODELS
-    def __init__(self, model, config, meta=None, transformer_info=None, **kwarg):
+    _VALID_DTYPES = VALID_DTYPES
+    def __init__(self, model, config, data_info, **kwarg):
         """
         An interface that allows the construction and selection of different synthesizers. It reduces the need for changing the code each time we want to run a different synthesizer. 
 
-        :param model: A pytorch defined model, or a name of one of the registered model here.
-        :type model: BaseSynthesizer or str
-        :param inferred_column_info: dictionary where keys are col names and vales are inferred column types
+        Args:
+            model (str or BaseSynthesizer): choice of synthesizer model name or instance.
+            config (dict): training parameters.
+            data_info (dict): metadata of transformed table. 
         """
-        print(f"Initializting pytorch synthesizer. Is_cuda_enable:{torch.cuda.is_available()}")
 
-        self.transformer_info = transformer_info
-        #print("config in synthesizerWrapper",config)
+        self.validate_data_info(data_info)
         
         if isinstance(model, str) and model in DEFAULT_MODELS:
-            self.model = DEFAULT_MODELS[model](**config)
+            self.model = DEFAULT_MODELS[model](data_info=data_info,**config)
         elif isinstance(model, BaseSynthesizer):
             self.model = model
         else:
             raise ValueError(f"model provided must be a BaseSynthesizer instance, or a string in the following default models: {self.get_registered_models()}. Got: {model}. ")
-        self.meta = meta
-
+        
     @classmethod
     def register_model(cls, new_models):
         assert isinstance(new_models, dict), "New models must be a dictionary with model name/model class pairs!"
@@ -48,6 +47,74 @@ class TableSynthesizer:
     @classmethod
     def get_registered_models(cls):
         return cls._DEFAULT_MODELS
+            
+
+    def validate_data_info(self, data_info):
+        """
+        This function confirms data_info follows the format: 
+        {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes}},
+        encoded_width: int}
+        
+        Parameters:
+        data_info (dict): The data_info dictionary to validate
+        
+        Returns:
+        bool: True if the format is correct, False otherwise
+        
+        Raises:
+        ValueError: If any validation check fails.
+        """
+        # Check if 'transform_info' and 'encoded_width' are in data_info
+        if 'transform_info' not in data_info or 'encoded_width' not in data_info:
+            raise ValueError("data_info must contain 'transform_info' and 'encoded_width' keys.")
+
+        # Check if 'encoded_width' is an integer
+        if not isinstance(data_info['encoded_width'], int):
+            raise ValueError(f"Encoded width {data_info['encoded_width']} is not an integer.")
+
+        encoded_width = data_info['encoded_width']
+
+        # Iterate through each entry in the transform_info dictionary
+        for column_name, info in data_info['transform_info'].items():
+            # Check if column_name is a string
+            if not isinstance(column_name, str):
+                raise ValueError(f"Column name {column_name} is not a string.")
+
+            # Check if info is a dictionary
+            if not isinstance(info, dict):
+                raise ValueError(f"Info for column {column_name} is not a dictionary.")
+
+            # Check required keys and their types in the info dictionary
+            required_keys = ['original_dtype', 'start_idx', 'end_idx', 'transformed_dtypes']
+            for key in required_keys:
+                if key not in info:
+                    raise ValueError(f"Key {key} is missing in the info dictionary for column {column_name}.")
+
+                if key == 'original_dtype':
+                    if info[key] not in self._VALID_DTYPES:
+                        raise ValueError(
+                            f"Dtype {info[key]} given for original column {column_name} is not valid. "
+                            f"Acceptable dtypes: {self._VALID_DTYPES}."
+                        )
+                elif key == 'transformed_dtypes':
+                    if not isinstance(info[key], dict):
+                        raise ValueError(f"transformed_dtypes for column {column_name} should be a dictionary.")
+                    for tf_type, dtype in info[key].items():
+                        if dtype not in self._VALID_DTYPES:
+                            raise ValueError(
+                                f"Dtype {dtype} given for transformed column {column_name} is not valid. "
+                                f"Acceptable dtypes: {self._VALID_DTYPES}."
+                            )
+                elif key == 'start_idx' or key == 'end_idx':
+                    if not isinstance(info[key], int):
+                        raise ValueError(f"Value for key {key} in column {column_name} is not an integer.")
+
+            # Check if start_idx, end_idx are within the valid range
+            if not (0 <= info['start_idx'] <= info['end_idx'] < encoded_width):
+                raise ValueError(
+                    f"Indices start_idx {info['start_idx']} and end_idx {info['end_idx']} for column {column_name} "
+                    f"are out of the valid range (0 <= start_idx <= end_idx < {encoded_width})."
+                )
 
     def fit(
         self,
@@ -73,7 +140,7 @@ class TableSynthesizer:
         Returns:
             synth_data: a torch tensor containing synthesized data in numerical format. The preprocessor will convert it back to table format.
         """
-        assert len(condition) == n or len(condition) == 1, f"Condition provided must be 1 or the same as number of samples! Got {len(condition)}. "
+        assert condition is None or len(condition) == n or len(condition) == 1, f"Condition length provided must be None, 1 or the same as number of samples! Got {len(condition)}. "
 
         synth_data = self.model.generate(n, condition)
 

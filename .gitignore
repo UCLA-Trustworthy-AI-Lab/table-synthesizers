@@ -1,0 +1,45 @@
+# Ignore all __pycache__ directories
+__pycache__/
+
+# Alternatively, you can use this pattern which also ignores all files with a .pyc extension
+*.py[cod]
+
+# Ignore other common Python artifacts
+*.pyo
+*.pyd
+*.pyd.*
+*.pyd-*.pyd
+*.pyd-*.pyo
+*.pyd-*.pyc
+
+# Ignore virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore local configuration files
+*.local
+*.log
+*.pid
+*.swp
+*.swo
+*.tmp
+*.temp
+
+# Ignore compiled code
+*.o
+*.a
+*.so
+*.dylib
+
+# Ignore build directories
+build/
+dist/

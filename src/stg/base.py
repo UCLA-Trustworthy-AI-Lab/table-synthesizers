@@ -59,7 +59,7 @@ class BaseSynthesizer:
     update_frontend()
         Calculates and sends important training progress information to the client.
   """
-  def __init__(self, checkpoint_interval_seconds=None, epochs=None, messageSender=None, **kwargs):
+  def __init__(self, data_info, checkpoint_interval_seconds=None, epochs=None, messageSender=None, **kwargs):
     """
       Init important parameters for the model. You can enter parameters from the configuration json file. Parameters with no specification provided will use default values.
     """
@@ -71,6 +71,7 @@ class BaseSynthesizer:
     self.passed_training_time = 0
     self.timer =None
     self.messageSender = messageSender
+    self.data_info = data_info
   
   def train(
         self,
@@ -79,7 +80,7 @@ class BaseSynthesizer:
     """Train a synthesizer:
         Args:
             train_data:
-                A dataloader object containing preprocessed training data, in numerical format suitable for synthesizer processing. 
+                A tensor dataloader object containing preprocessed training data, in numerical format suitable for synthesizer processing. 
         Returns:
             No return value.
     """
@@ -91,23 +92,23 @@ class BaseSynthesizer:
     self.stop_threading()
 
   def _train(self, train_data):
-    pass
+    raise NotImplementedError("Training method need to be implemented by child synthesizers!")
     
   def generate(self, n, condition=None):
-        """Sample data similar to the training data.
-        Args:
-            n (int):
-                Number of samples to generate.
-            condition (torch.dataloader): 
-                A dataloader contains instance level condition to be generated based on.
-        Returns:
-            torch.tensor()
-        """
+    """Sample data similar to the training data.
+    Args:
+        n (int):
+            Number of samples to generate.
+        condition (torch.dataloader): 
+            A dataloader contains instance level condition to be generated based on.
+    Returns:
+        torch.tensor()
+    """
         
     return self._generate(n, condition)
 
   def _generate(self, n, condition=None):
-        pass
+    raise NotImplementedError("Generating method need to be implemented by child synthesizers!")
 
   def set_device(self, device=None):
         """Set the `device` to be used ('GPU' or 'CPU)."""
@@ -117,15 +118,17 @@ class BaseSynthesizer:
             self.device = device
             
   def init_model(self, train_data):
-        """Initialize attributes of the synthesizer"""
-
+    """Initialize attributes of the synthesizer"""
+    pass
         
   def get_state(self):
     """Write necessary model states and parameters into one dictionary. """
+    pass
 
         
   def load_state(self, checkpoint):
     """Load state from a checkpoint dictionary"""
+    pass
     
   def start_threading(self):
     """
