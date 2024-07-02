@@ -46,7 +46,8 @@ def load_and_process_data():
         # Create data_info dictionary
         data_info = {
             'transform_info': {},
-            'encoded_width': df.shape[1]
+            'encoded_width': df.shape[1],
+            "original_size": len(df), 
         }
 
         start_idx = 0
@@ -54,20 +55,23 @@ def load_and_process_data():
             if col in continuous_cols:
                 original_dtype = 'continuous'
                 transformed_dtypes = {'minmax_scaled': 'continuous'}
-                end_idx = start_idx
+                empirical_dist = []
+                end_idx = start_idx + 1
             else:
                 original_dtype = 'categorical'
                 transformed_dtypes = {cat: 'binary' for cat in onehot_encoder.get_feature_names_out([col])}
                 end_idx = start_idx + len(transformed_dtypes) - 1
+                empirical_dist = list(df[col].value_counts() / len(df))            
 
             data_info['transform_info'][col] = {
                 'original_dtype': original_dtype,
                 'start_idx': start_idx,
                 'end_idx': end_idx,
-                'transformed_dtypes': transformed_dtypes
+                'transformed_dtypes': transformed_dtypes,
+                "empirical_dist":empirical_dist
             }
 
-            start_idx = end_idx + 1
+            start_idx = end_idx
 
         # Convert transformed DataFrame to tensor and then DataLoader
         tensor_data = torch.tensor(df.values, dtype=torch.float32)

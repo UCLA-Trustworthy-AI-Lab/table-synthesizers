@@ -1,7 +1,16 @@
 from .base import BaseSynthesizer
 from .identity import Identity
+from .CTGAN import CTGAN
+from .TabDDPM import TabDDPM
+from .PATECTGAN import PATECTGAN
 
-DEFAULT_MODELS = {"Identity":Identity}
+import numpy as np
+import torch
+
+DEFAULT_MODELS = {"Identity":Identity,
+                  "CTGAN":CTGAN,
+                  "TabDDPM":TabDDPM,
+                  "PATECTGAN":PATECTGAN}
 
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
@@ -39,6 +48,9 @@ class TableSynthesizer:
         
     @classmethod
     def register_model(cls, new_models):
+        """
+            This methods adds new models to _DEFAULT_MODELS so that they can be selected by passing in model name. Custom models by users must be first registered.
+        """
         assert isinstance(new_models, dict), "New models must be a dictionary with model name/model class pairs!"
         for md in new_models.values():
             assert issubclass(md, BaseSynthesizer), f"The model being registered must be a BaseSynthesizer instance! Received {type(md)}"
@@ -47,12 +59,11 @@ class TableSynthesizer:
     @classmethod
     def get_registered_models(cls):
         return cls._DEFAULT_MODELS
-            
 
     def validate_data_info(self, data_info):
         """
         This function confirms data_info follows the format: 
-        {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes}},
+        {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, empirical_dist}},
         encoded_width: int}
         
         Parameters:
@@ -85,7 +96,7 @@ class TableSynthesizer:
                 raise ValueError(f"Info for column {column_name} is not a dictionary.")
 
             # Check required keys and their types in the info dictionary
-            required_keys = ['original_dtype', 'start_idx', 'end_idx', 'transformed_dtypes']
+            required_keys = ['original_dtype', 'start_idx', 'end_idx', 'transformed_dtypes', "empirical_dist"]
             for key in required_keys:
                 if key not in info:
                     raise ValueError(f"Key {key} is missing in the info dictionary for column {column_name}.")
@@ -108,12 +119,36 @@ class TableSynthesizer:
                 elif key == 'start_idx' or key == 'end_idx':
                     if not isinstance(info[key], int):
                         raise ValueError(f"Value for key {key} in column {column_name} is not an integer.")
+                    
+                elif key == "empirical_dist":
+                    obj = info[key]
+                    if isinstance(obj, list):
+                        # Check if all elements are numbers
+                        assert all(isinstance(x, (int, float)) for x in obj), "All elements in the list must be numbers."
+                        array = np.array(obj)
+                    elif isinstance(obj, np.ndarray):
+                        # Check if it's a 1-dimensional array
+                        assert obj.ndim == 1, "The numpy array must be 1-dimensional."
+                        array = obj
+                    else:
+                        try:
+                            if isinstance(obj, torch.Tensor):
+                                # Check if it's a 1-dimensional tensor
+                                assert obj.ndim == 1, "The tensor must be 1-dimensional."
+                                array = obj.numpy()
+                            else:
+                                raise TypeError
+                        except ImportError:
+                            raise TypeError("The object must be a list, numpy array, or tensor.")
+                        
+                    # Check if the sum of elements is 1
+                    assert np.isclose(array.sum(), 1.0), "The sum of elements must be 1."
 
             # Check if start_idx, end_idx are within the valid range
-            if not (0 <= info['start_idx'] <= info['end_idx'] < encoded_width):
+            if not (0 <= info['start_idx'] <= info['end_idx'] <= info['start_idx'] + encoded_width):
                 raise ValueError(
                     f"Indices start_idx {info['start_idx']} and end_idx {info['end_idx']} for column {column_name} "
-                    f"are out of the valid range (0 <= start_idx <= end_idx < {encoded_width})."
+                    f"are out of the valid range (0 <= start_idx <= end_idx <= {info['start_idx'] + encoded_width})."
                 )
 
     def fit(

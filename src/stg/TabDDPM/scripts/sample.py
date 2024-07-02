@@ -1,0 +1,183 @@
+import torch
+import numpy as np
+import zero
+from ..tab_ddpm.gaussian_multinomial_diffsuion import GaussianMultinomialDiffusion
+from .utils_train import get_model
+
+
+def to_good_ohe(ohe, X):
+    indices = np.cumsum([0] + ohe._n_features_outs)
+    Xres = []
+    for i in range(1, len(indices)):
+        x_ = np.max(X[:, indices[i - 1]:indices[i]], axis=1)
+        t = X[:, indices[i - 1]:indices[i]] - x_.reshape(-1, 1)
+        Xres.append(np.where(t >= 0, 1, 0))
+    return np.hstack(Xres)
+
+def combine_columns(X_features, y, data_info, target):
+    X_features = torch.tensor(X_features)
+    y = torch.tensor(y)
+    #print("y.shape",y.shape)
+    
+    transform_info = data_info['transform_info']
+    total_columns = sum(info['end_idx'] - info['start_idx'] for info in transform_info.values())
+    #print("Desired shape:",(int(X_features.shape[0]), int(total_columns)))
+
+    # Initialize a new tensor with the same number of columns as the original tensor
+    combined_tensor = torch.zeros((int(X_features.shape[0]), int(total_columns)), dtype=X_features.dtype)
+    #combined_tensor = torch.zeros((int(X_features.shape[0]), int(total_columns)))
+    
+    feature_idx = 0
+    target_col_range = None
+    
+    # Place the X_features and y values into the appropriate columns
+    for column_name, info in transform_info.items():
+        start_idx = info['start_idx']
+        end_idx = info['end_idx']
+        
+        if column_name == target:
+            combined_tensor[:, start_idx:end_idx] = y.unsqueeze(1)
+            target_col_range = range(start_idx, end_idx)
+        else:
+            col_range = range(start_idx, end_idx)
+            combined_tensor[:, col_range] = X_features[:, feature_idx:feature_idx + len(col_range)]
+            feature_idx += len(col_range)
+    
+    return combined_tensor
+
+def sample(
+    data_info,
+    target,
+    empirical_class_dist,
+    batch_size = 2000,
+    num_samples = 0,
+    model_type = 'mlp',
+    model_params = None,
+    diffusion_fn_state = None,
+    num_timesteps = 1000,
+    gaussian_loss_type = 'mse',
+    scheduler = 'cosine',
+    disbalance = None,
+    device = torch.device('cuda:1'),
+    seed = 0,
+):
+    zero.improve_reproducibility(seed)
+
+    num_col_types = ['numerical', 'ordinal','continuous', 'datetime']
+
+    category_sizes = []
+    num_numerical_features_ = 0
+    target_idx = 0
+    disc_cols = []
+    for i,element in enumerate(data_info['transform_info'].items()):
+        column,info = element
+        if info['original_dtype'] == 'orginal':
+            disc_cols.append(num_numerical_features_)
+        if info['original_dtype'] in num_col_types:
+            num_numerical_features_ += 1
+        else:
+            category_sizes.append(info['num_classes'])
+    
+        if i == len(data_info['transform_info']) - 1 and target is None:
+            target = column
+    K = np.array(category_sizes)
+    if len(K) == 0:
+        K = np.array([0])
+
+    d_in = np.sum(K) + num_numerical_features_
+    model_params['d_in'] = int(d_in)
+    model_params['num_classes'] = len(empirical_class_dist)
+    model_params['is_y_cond'] = data_info['transform_info'][target]['original_dtype'] not in num_col_types
+
+    model = get_model(
+        model_type,
+        model_params,
+        num_numerical_features_,
+        category_sizes=category_sizes
+    )
+
+    model.load_state_dict(
+        diffusion_fn_state
+    )
+
+    diffusion = GaussianMultinomialDiffusion(
+        K,
+        num_numerical_features=num_numerical_features_,
+        denoise_fn=model, num_timesteps=num_timesteps, 
+        gaussian_loss_type=gaussian_loss_type, scheduler=scheduler, device=device
+    )
+
+    diffusion.to(device)
+    diffusion.eval()
+    
+    # empirical_class_dist = empirical_class_dist.float() + torch.tensor([-5000., 10000.]).float()
+    if disbalance == 'fix':
+        empirical_class_dist[0], empirical_class_dist[1] = empirical_class_dist[1], empirical_class_dist[0]
+        x_gen, y_gen = diffusion.sample_all(num_samples, batch_size, empirical_class_dist.float(), ddim=False)
+
+    elif disbalance == 'fill':
+        ix_major = empirical_class_dist.argmax().item()
+        val_major = empirical_class_dist[ix_major].item()
+        x_gen, y_gen = [], []
+        for i in range(empirical_class_dist.shape[0]):
+            if i == ix_major:
+                continue
+            distrib = torch.zeros_like(empirical_class_dist)
+            distrib[i] = 1
+            num_samples = val_major - empirical_class_dist[i].item()
+            x_temp, y_temp = diffusion.sample_all(num_samples, batch_size, distrib.float(), ddim=False)
+            x_gen.append(x_temp)
+            y_gen.append(y_temp)
+        
+        x_gen = torch.cat(x_gen, dim=0)
+        y_gen = torch.cat(y_gen, dim=0)
+
+    else:
+        x_gen, y_gen = diffusion.sample_all(num_samples, batch_size, empirical_class_dist.float(), ddim=False)
+
+    X_gen, y_gen = x_gen.numpy(), y_gen.numpy()
+
+
+    num_numerical_features = num_numerical_features_ + int(data_info['transform_info'][target] in num_col_types)
+
+    X_num_ = X_gen
+    if num_numerical_features < X_gen.shape[1]:
+        #np.save(os.path.join(parent_dir, 'X_cat_unnorm'), X_gen[:, num_numerical_features:])
+        # _, _, cat_encoder = lib.cat_encode({'train': X_cat_real}, T_dict['cat_encoding'], y_real, T_dict['seed'], True)
+        #if T_dict['cat_encoding'] == 'one-hot':
+        #    X_gen[:, num_numerical_features:] = to_good_ohe(D.cat_transform.steps[0][1], X_num_[:, num_numerical_features:])
+        #X_cat = D.cat_transform.inverse_transform(X_gen[:, num_numerical_features:])
+        X_cat = X_gen[:, num_numerical_features:]
+    else:
+        X_cat = None
+
+    if num_numerical_features_ != 0:
+        # _, normalize = lib.normalize({'train' : X_num_real}, T_dict['normalization'], T_dict['seed'], True)
+        #np.save(os.path.join(parent_dir, 'X_num_unnorm'), X_gen[:, :num_numerical_features])
+        #X_num_ = D.num_transform.inverse_transform(X_gen[:, :num_numerical_features])
+        X_num = X_num_[:, :num_numerical_features]
+
+        #X_num_real = np.load(os.path.join(real_data_path, "X_num_train.npy"), allow_pickle=True)
+        
+        disc_cols = [c for c in data_info['transform_info'] if c in num_col_types ]
+        print("Discrete cols:", disc_cols)
+        if data_info['transform_info'][target] in num_col_types:
+            y_gen = X_num[:, 0]
+            X_num = X_num[:, 1:]
+        if len(disc_cols):
+            #X_num = round_columns(X_num_real, X_num, disc_cols)
+            for c in disc_cols:
+                X_num[:,c] = np.round(X_num[:, c])
+
+    if X_cat is not None:
+        X_features = torch.cat([X_num, X_cat],dim=0)
+    else: 
+        X_features = X_num
+    return combine_columns(X_features, y_gen, data_info, target)
+
+    #if num_numerical_features != 0:
+    #    print("Num shape: ", X_num.shape)
+    #    np.save(os.path.join(parent_dir, 'X_num_train'), X_num)
+    #if num_numerical_features < X_gen.shape[1]:
+    #    np.save(os.path.join(parent_dir, 'X_cat_train'), X_cat)
+    #np.save(os.path.join(parent_dir, 'y_train'), y_gen)
