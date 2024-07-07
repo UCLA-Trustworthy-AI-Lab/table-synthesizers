@@ -1,7 +1,7 @@
 torch
 pandas
 numpy
-sklearn
+scikit-learn
 
 # For tabddpm
 category_encoders
