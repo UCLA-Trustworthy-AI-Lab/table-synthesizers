@@ -65,6 +65,7 @@ class TableSynthesizer:
         This function confirms data_info follows the format: 
         {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, empirical_dist}},
         encoded_width: int}
+        transformed_dtypes = {transformed_column_with_surfix: transformed_column_dtypes}
         
         Parameters:
         data_info (dict): The data_info dictionary to validate
@@ -110,10 +111,10 @@ class TableSynthesizer:
                 elif key == 'transformed_dtypes':
                     if not isinstance(info[key], dict):
                         raise ValueError(f"transformed_dtypes for column {column_name} should be a dictionary.")
-                    for tf_type, dtype in info[key].items():
+                    for transformed_column, dtype in info[key].items():
                         if dtype not in self._VALID_DTYPES:
                             raise ValueError(
-                                f"Dtype {dtype} given for transformed column {column_name} is not valid. "
+                                f"Dtype {dtype} given for transformed column {transformed_column} is not valid. "
                                 f"Acceptable dtypes: {self._VALID_DTYPES}."
                             )
                 elif key == 'start_idx' or key == 'end_idx':
@@ -142,7 +143,8 @@ class TableSynthesizer:
                             raise TypeError("The object must be a list, numpy array, or tensor.")
                         
                     # Check if the sum of elements is 1
-                    assert np.isclose(array.sum(), 1.0), "The sum of elements must be 1."
+                    if info['original_dtype'] in ['categorical']:
+                        assert np.isclose(array.sum(), 1.0), "The sum of elements must be 1."
 
             # Check if start_idx, end_idx are within the valid range
             if not (0 <= info['start_idx'] <= info['end_idx'] <= info['start_idx'] + encoded_width):
