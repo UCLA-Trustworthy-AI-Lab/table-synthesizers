@@ -174,7 +174,7 @@ def train(
     seed = 0,
 ):
     """
-        data_info: dict with fomat  {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, num_classes, empirical_dist}, encoded_width, integer}
+        data_info: dict with fomat  {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, empirical_dist}, encoded_width, integer}
     """
     #parent_dir = os.path.normpath(parent_dir)
 
@@ -188,7 +188,7 @@ def train(
         if info['original_dtype'] in num_dtypes:
             num_numerical_features += 1
         else:
-            category_sizes.append(info['num_classes'])
+            category_sizes.append(len(info['empirical_dist']))
         if i == len(data_info['transform_info']) - 1 and target is None:
             target = column
         if target == column:
