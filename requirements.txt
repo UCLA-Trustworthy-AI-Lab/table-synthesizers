@@ -8,6 +8,9 @@ category_encoders
 tomli
 libzero==0.0.8
 
+# For testing
+pytest
+
 # For AIM
 #opendp==0.7.0
 #autodp==0.2
