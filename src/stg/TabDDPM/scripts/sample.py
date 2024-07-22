@@ -5,6 +5,8 @@ from ..tab_ddpm.gaussian_multinomial_diffsuion import GaussianMultinomialDiffusi
 from .utils_train import get_model
 
 
+num_col_types = ['numerical', 'ordinal','continuous', 'datetime']
+
 def to_good_ohe(ohe, X):
     indices = np.cumsum([0] + ohe._n_features_outs)
     Xres = []
@@ -14,10 +16,10 @@ def to_good_ohe(ohe, X):
         Xres.append(np.where(t >= 0, 1, 0))
     return np.hstack(Xres)
 
-def combine_columns(X_features, y, data_info, target):
+def combine_columns(X_features, y, data_info, target, num_cols):
     X_features = torch.tensor(X_features)
     y = torch.tensor(y)
-    #print("y.shape",y.shape)
+    print("y.shape",y.shape, y[:20])
     
     transform_info = data_info['transform_info']
     total_columns = sum(info['end_idx'] - info['start_idx'] for info in transform_info.values())
@@ -27,21 +29,24 @@ def combine_columns(X_features, y, data_info, target):
     combined_tensor = torch.zeros((int(X_features.shape[0]), int(total_columns)), dtype=X_features.dtype)
     #combined_tensor = torch.zeros((int(X_features.shape[0]), int(total_columns)))
     
-    feature_idx = 0
-    target_col_range = None
+    cur_num_idx, cur_cat_idx = 0, num_cols
     
     # Place the X_features and y values into the appropriate columns
     for column_name, info in transform_info.items():
         start_idx = info['start_idx']
         end_idx = info['end_idx']
+        is_num = info['original_dtype'] in num_col_types
+        col_range = range(start_idx, end_idx)
+        print(column_name,start_idx, end_idx)
         
         if column_name == target:
             combined_tensor[:, start_idx:end_idx] = y.unsqueeze(1)
-            target_col_range = range(start_idx, end_idx)
+        elif is_num:
+            combined_tensor[:, col_range] = X_features[:, cur_num_idx:cur_num_idx + len(col_range)]
+            cur_num_idx += len(col_range)
         else:
-            col_range = range(start_idx, end_idx)
-            combined_tensor[:, col_range] = X_features[:, feature_idx:feature_idx + len(col_range)]
-            feature_idx += len(col_range)
+            combined_tensor[:, col_range] = X_features[:, cur_cat_idx:cur_cat_idx + len(col_range)]
+            cur_cat_idx += len(col_range)
     
     return combined_tensor
 
@@ -63,7 +68,7 @@ def sample(
 ):
     zero.improve_reproducibility(seed)
 
-    num_col_types = ['numerical', 'ordinal','continuous', 'datetime']
+    
 
     category_sizes = []
     num_numerical_features_ = 0
@@ -75,8 +80,8 @@ def sample(
             disc_cols.append(num_numerical_features_)
         if info['original_dtype'] in num_col_types:
             num_numerical_features_ += 1
-        else:
-            category_sizes.append(info['num_classes'])
+        elif i < len(data_info['transform_info']) - 1:
+            category_sizes.append(len(info['empirical_dist'])) # only append non-target cat variables
     
         if i == len(data_info['transform_info']) - 1 and target is None:
             target = column
@@ -139,6 +144,7 @@ def sample(
 
 
     num_numerical_features = num_numerical_features_ + int(data_info['transform_info'][target] in num_col_types)
+    print(num_numerical_features)
 
     X_num_ = X_gen
     if num_numerical_features < X_gen.shape[1]:
@@ -158,10 +164,16 @@ def sample(
         X_num = X_num_[:, :num_numerical_features]
 
         #X_num_real = np.load(os.path.join(real_data_path, "X_num_train.npy"), allow_pickle=True)
+        print("data_info['transform_info'].keys()")
+        print(data_info['transform_info'])
         
-        disc_cols = [c for c in data_info['transform_info'] if c in num_col_types ]
-        print("Discrete cols:", disc_cols)
-        if data_info['transform_info'][target] in num_col_types:
+        disc_cols = []
+        for c, info in data_info['transform_info'].items():
+            if info['original_dtype'] in ['ordinal']:
+                disc_cols.append(info['start_idx'])
+        #print("Discrete cols:", disc_cols)
+        #print("data_info['transform_info'][target]", data_info['transform_info'][target])
+        if data_info['transform_info'][target]['original_dtype'] in num_col_types:
             y_gen = X_num[:, 0]
             X_num = X_num[:, 1:]
         if len(disc_cols):
@@ -170,10 +182,11 @@ def sample(
                 X_num[:,c] = np.round(X_num[:, c])
 
     if X_cat is not None:
-        X_features = torch.cat([X_num, X_cat],dim=0)
+        print(X_num.shape, X_cat.shape)
+        X_features = np.concatenate([X_num, X_cat],axis=1)
     else: 
         X_features = X_num
-    return combine_columns(X_features, y_gen, data_info, target)
+    return combine_columns(X_features, y_gen, data_info, target, X_num.shape[1])
 
     #if num_numerical_features != 0:
     #    print("Num shape: ", X_num.shape)

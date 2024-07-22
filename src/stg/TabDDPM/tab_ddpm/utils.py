@@ -126,6 +126,7 @@ def log_categorical(log_x_start, log_prob):
 
 def index_to_log_onehot(x, num_classes):
     onehots = []
+    #print(num_classes, x.shape)
     for i in range(len(num_classes)):
         onehots.append(F.one_hot(x[:, i], num_classes[i]))
  

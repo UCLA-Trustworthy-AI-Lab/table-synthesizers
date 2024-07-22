@@ -10,6 +10,8 @@ libzero==0.0.8
 
 # For testing
 pytest
+lddp_optimus @ git+https://github.com/ucla-trustworthy-ai-synthdata/lddp-optimus.git
+sdmetrics==0.11.1
 
 # For AIM
 #opendp==0.7.0
