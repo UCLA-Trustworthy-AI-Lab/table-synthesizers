@@ -188,7 +188,7 @@ def train(
         if info['original_dtype'] in num_dtypes:
             num_numerical_features += 1
         else:
-            category_sizes.append(info['num_classes'])
+            category_sizes.append(len(info['empirical_dist']))
         if i == len(data_info['transform_info']) - 1 and target is None:
             target = column
         if target == column:

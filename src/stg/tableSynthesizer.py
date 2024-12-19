@@ -142,7 +142,8 @@ class TableSynthesizer:
                             raise TypeError("The object must be a list, numpy array, or tensor.")
                         
                     # Check if the sum of elements is 1
-                    assert np.isclose(array.sum(), 1.0), "The sum of elements must be 1."
+                    if info['original_dtype'] == 'categorical':
+                        assert np.isclose(array.sum(), 1.0), f"The sum of categorical levels must be 1. Currently {array.sum()} for column_name {column_name}."
 
             # Check if start_idx, end_idx are within the valid range
             if not (0 <= info['start_idx'] <= info['end_idx'] <= info['start_idx'] + encoded_width):
