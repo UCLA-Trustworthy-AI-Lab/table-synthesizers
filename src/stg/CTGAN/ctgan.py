@@ -257,9 +257,9 @@ class CTGAN(BaseSynthesizer):
 
             fake = self._generator(fakez)
             fakeact = self._apply_activate(fake)
-            data.append(fakeact.detach().cpu().numpy())
+            data.append(fakeact.detach().cpu()) # keep as tensor, not numpy
 
-        data = np.concatenate(data, axis=0)
+        data = torch.cat(data, axis=0)
         data = data[:n]
 
         ed = time.time()

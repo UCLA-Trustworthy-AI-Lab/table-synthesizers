@@ -1,6 +1,7 @@
 import pytest
 import sys
 import os
+import torch
 
 # Add src to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
@@ -28,6 +29,7 @@ def test_TabDDPM(data):
         print("*"*40)
         
         assert sampled_data.shape[0] == data_info['original_size'], "Sampled data length mismatch"
+        assert isinstance(sampled_data, torch.Tensor), "Sampled data must be tensor!"
         #assert isinstance(sampled_data, type(dataloader.dataset)), "Sampled data type mismatch"
 
 if __name__ == "__main__":

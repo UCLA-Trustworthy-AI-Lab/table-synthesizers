@@ -174,7 +174,7 @@ def train(
     seed = 0,
 ):
     """
-        data_info: dict with fomat  {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, num_classes, empirical_dist}, encoded_width, integer}
+        data_info: dict with fomat  {transform_info: {column_name: {original_dtype, start_idx, end_idx, transformed_dtypes, empirical_dist}, encoded_width, integer}
     """
     #parent_dir = os.path.normpath(parent_dir)
 

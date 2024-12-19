@@ -32,7 +32,7 @@ def load_and_process_data():
 
         # Initialize transformers
         minmax_scaler = MinMaxScaler()
-        onehot_encoder = OneHotEncoder(sparse=False, handle_unknown='ignore')
+        onehot_encoder = OneHotEncoder(handle_unknown='ignore') # sparse=False, 
 
         # Transform continuous columns
         df[continuous_cols] = minmax_scaler.fit_transform(df[continuous_cols])

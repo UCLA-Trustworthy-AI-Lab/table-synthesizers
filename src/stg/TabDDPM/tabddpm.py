@@ -49,7 +49,7 @@ class TabDDPM(BaseSynthesizer):
     data_info,
     target=None,
     steps = 10000,
-    lr = 0.002,
+    lr = 0.001,
     weight_decay = 1e-4,
     model_type = 'mlp',
     d_layers = [256, 256],

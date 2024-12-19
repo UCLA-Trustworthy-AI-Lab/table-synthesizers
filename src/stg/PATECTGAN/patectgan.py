@@ -569,9 +569,9 @@ class PATECTGAN(BaseSynthesizer):
 
             fake = self._generator(fakez)
             fakeact = self._apply_activate(fake)
-            data.append(fakeact.detach().cpu().numpy())
+            data.append(fakeact.detach().cpu())
 
-        data = np.concatenate(data, axis=0)
+        data = torch.cat(data, dim=0)
 
         return data[:n]
 
