@@ -39,12 +39,17 @@ class CTGAN(BaseSynthesizer):
   """
   This model applies conditional generation and model-specific regularization to generated dataset with both categorical and continous columns. Implementation based on: https://github.com/sdv-dev/CTGAN/blob/main/ctgan/synthesizers/ctgan.py
   """
-  def __init__(self, data_info, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=10, pac=5,checkpoint_interval_seconds=None,**kwarg):
-    BaseSynthesizer.__init__(self, checkpoint_interval_seconds)
+  def __init__(self, data_info=None, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=10, pac=5,checkpoint_interval_seconds=None,**kwarg):
+    BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwarg)
     self.model_loaded = False
     self._epochs = epochs
     #print(f"CTGAN epochs:{epochs}")
-    self._transformer = TableTransformerInfo(data_info['transform_info'])
+    
+    # Initialize transformer if data_info is provided
+    if data_info is not None:
+        self._transformer = TableTransformerInfo(data_info['transform_info'])
+    else:
+        self._transformer = None
     #print("CTGAN transformer output width: ",self._transformer.output_width)
     #for t in self._transformer.transformers:
     #    print(t.output_width,t.is_categorical)
@@ -277,6 +282,10 @@ class CTGAN(BaseSynthesizer):
         """Initialize data sampler, generator and synthesizers."""
         if self.model_loaded:
           return
+        
+        # Create transformer from data_info if needed
+        if self._transformer is None and self.data_info is not None:
+            self._transformer = TableTransformerInfo(self.data_info['transform_info'])
         
         self._data_sampler = DataSampler(
           train_dataloader,

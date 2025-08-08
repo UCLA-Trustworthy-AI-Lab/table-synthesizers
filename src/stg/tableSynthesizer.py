@@ -3,6 +3,66 @@ from .identity import Identity
 from .CTGAN import CTGAN
 from .TabDDPM import TabDDPM
 from .PATECTGAN import PATECTGAN
+try:
+    from .AIM import AIM
+    AIM_AVAILABLE = True
+except ImportError:
+    AIM_AVAILABLE = False
+    print("Warning: AIM not available due to missing dependencies")
+from .TVAE import TVAE
+
+# New synthesizers that only support DataFrame input
+from .CART import CARTSynthesizer
+from .DPCART import DPCARTSynthesizer
+try:
+    from .SMOTE import SMOTESynthesizer
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    print("Warning: SMOTE not available due to missing dependencies (imbalanced-learn)")
+
+# New synthesizers from Gen_MIA experiments
+try:
+    from .BayesianNetwork import BayesianNetworkSynthesizer
+    BAYESIANNETWORK_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    BAYESIANNETWORK_AVAILABLE = False
+    print(f"Warning: BayesianNetwork not available due to dependencies: {str(e)}")
+
+try:
+    from .GREAT import GREATSynthesizer
+    GREAT_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    GREAT_AVAILABLE = False
+    print(f"Warning: GREAT not available due to dependencies: {str(e)}")
+
+try:
+    from .ARF import ARFSynthesizer
+    ARF_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    ARF_AVAILABLE = False
+    print(f"Warning: ARF not available due to dependencies: {str(e)}")
+
+try:
+    from .NFlow import NFlowSynthesizer
+    NFLOW_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    NFLOW_AVAILABLE = False
+    print(f"Warning: NFlow not available due to dependencies: {str(e)}")
+
+try:
+    from .AutoDiff import AutoDiffSynthesizer
+    AUTODIFF_AVAILABLE = True
+except ImportError:
+    AUTODIFF_AVAILABLE = False
+    print("Warning: AutoDiff not available due to missing dependencies")
+
+try:
+    from .TabSyn import TabSynSynthesizer
+    TABSYN_AVAILABLE = True
+except ImportError:
+    TABSYN_AVAILABLE = False
+    print("Warning: TabSyn not available due to missing dependencies")
 
 import numpy as np
 import torch
@@ -10,7 +70,34 @@ import torch
 DEFAULT_MODELS = {"Identity":Identity,
                   "CTGAN":CTGAN,
                   "TabDDPM":TabDDPM,
-                  "PATECTGAN":PATECTGAN}
+                  "PATECTGAN":PATECTGAN,
+                  "TVAE":TVAE,
+                  "CART":CARTSynthesizer,
+                  "DPCART":DPCARTSynthesizer}
+
+if AIM_AVAILABLE:
+    DEFAULT_MODELS["AIM"] = AIM
+
+if SMOTE_AVAILABLE:
+    DEFAULT_MODELS["SMOTE"] = SMOTESynthesizer
+
+if BAYESIANNETWORK_AVAILABLE:
+    DEFAULT_MODELS["BayesianNetwork"] = BayesianNetworkSynthesizer
+
+if GREAT_AVAILABLE:
+    DEFAULT_MODELS["GREAT"] = GREATSynthesizer
+
+if ARF_AVAILABLE:
+    DEFAULT_MODELS["ARF"] = ARFSynthesizer
+
+if NFLOW_AVAILABLE:
+    DEFAULT_MODELS["NFlow"] = NFlowSynthesizer
+
+if AUTODIFF_AVAILABLE:
+    DEFAULT_MODELS["AutoDiff"] = AutoDiffSynthesizer
+
+if TABSYN_AVAILABLE:
+    DEFAULT_MODELS["TabSyn"] = TabSynSynthesizer
 
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
@@ -27,17 +114,21 @@ class TableSynthesizer:
 
     _DEFAULT_MODELS = DEFAULT_MODELS
     _VALID_DTYPES = VALID_DTYPES
-    def __init__(self, model, config, data_info, **kwarg):
+    def __init__(self, model, config=None, data_info=None, **kwarg):
         """
         An interface that allows the construction and selection of different synthesizers. It reduces the need for changing the code each time we want to run a different synthesizer. 
 
         Args:
             model (str or BaseSynthesizer): choice of synthesizer model name or instance.
-            config (dict): training parameters.
-            data_info (dict): metadata of transformed table. 
+            config (dict): training parameters. Optional when using DataFrame input.
+            data_info (dict): metadata of transformed table. Optional when using DataFrame input.
         """
-
-        self.validate_data_info(data_info)
+        
+        if config is None:
+            config = {}
+            
+        if data_info is not None:
+            self.validate_data_info(data_info)
         
         if isinstance(model, str) and model in DEFAULT_MODELS:
             self.model = DEFAULT_MODELS[model](data_info=data_info,**config)
@@ -155,33 +246,39 @@ class TableSynthesizer:
 
     def fit(
         self,
-        data
+        data,
+        batch_size=32
     ):
         """
-            Train the synthesizer using the preprocessed data.
+            Train the synthesizer using the input data.
 
         Args:
-            data (torch.dataloader): a dataloader object containing preprocessed training data, in numerical format suitable for synthesizer processing. 
+            data: Either a pandas DataFrame (will be encoded automatically) or 
+                  a torch.dataloader object containing preprocessed training data.
+            batch_size (int): Batch size for DataLoader creation when input is DataFrame.
         """
         self.model.train(
-            data            
+            data,
+            batch_size=batch_size         
         )
 
-    def sample(self, n, condition=None):
-        """_summary_
+    def sample(self, n, condition=None, return_dataframe=False):
+        """Generate synthetic samples
 
         Args:
             n (int): number of training samples to be generated.
             condition (torch.dataloader): dataloader contains instance level condition to be generated based on. Must have same length as n.
+            return_dataframe (bool): If True, return decoded DataFrame. If False, return tensor.
 
         Returns:
-            synth_data: a torch tensor containing synthesized data in numerical format. The preprocessor will convert it back to table format.
+            synth_data: Either a torch tensor (default) or pandas DataFrame containing synthesized data.
         """
         assert condition is None or len(condition) == n or len(condition) == 1, f"Condition length provided must be None, 1 or the same as number of samples! Got {len(condition)}. "
 
         synth_data = self.model.generate(n, condition)
 
-        #print("type(synth_data) in wrapper:",type(synth_data))
+        if return_dataframe and hasattr(self.model, 'decode_samples'):
+            return self.model.decode_samples(synth_data)
 
         return synth_data
 

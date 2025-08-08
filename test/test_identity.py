@@ -28,4 +28,11 @@ def test_identity_return(data):
         assert sampled_data.shape[0] == data_info['original_size'], "Sampled data length mismatch"
         #assert isinstance(sampled_data, type(dataloader.dataset)), "Sampled data type mismatch"
 
+def test_identity_dataframe_support(data):
+    """Test Identity with DataFrame input using shared utility"""
+    from dataframe_test_utils import test_dataframe_support
+    
+    config = {"bootstrap": False}
+    test_dataframe_support('Identity', config, n_samples=10)
+
 

@@ -179,31 +179,48 @@ class DataSampler(object):
         Returns:
             n rows of matrix data.
         """
-        reservoir = []
-        sampled_count = 0
-        total_matching = 0
-
+        if col is None:
+            # No conditional constraints, just sample randomly
+            all_data = []
+            for batch in self._data_loader:
+                all_data.append(batch.numpy())
+            all_data = np.vstack(all_data)
+            indices = np.random.choice(len(all_data), size=n, replace=True)
+            return all_data[indices]
+        
+        # For each position in the batch, we need to find data that matches that specific condition
+        result = []
+        
+        # Collect all data first
+        all_data = []
         for batch in self._data_loader:
-            data = batch.numpy()
-            for i in range(data.shape[0]):
-                match = True
-                if col is not None:
-                    for c, o in zip(col, opt):
-                        matrix_st = self._discrete_column_matrix_st[c]
-                        matrix_ed = matrix_st + self._discrete_column_n_category[c]
-                        #print("argmax output:",np.argmax(data[i, matrix_st:matrix_ed]), ". Target: ",o, ". matrix_st:",matrix_st)
-                        if np.argmax(data[i, matrix_st:matrix_ed]) != o:
-                            match = False
-                            break
-                if match:
-                    total_matching += 1
-                    if len(reservoir) < n:
-                        reservoir.append(data[i])
-                    else:
-                        j = np.random.randint(0, total_matching)
-                        if j < n:
-                            reservoir[j] = data[i]
-        return np.array(reservoir)
+            all_data.append(batch.numpy())
+        all_data = np.vstack(all_data)
+        
+        # For each sample position, find data matching its condition
+        for i in range(n):
+            condition_col = col[i] if hasattr(col, '__len__') and len(col) > i else col[0] if hasattr(col, '__len__') else col
+            condition_opt = opt[i] if hasattr(opt, '__len__') and len(opt) > i else opt[0] if hasattr(opt, '__len__') else opt
+            
+            # Find all data rows that match this condition
+            matching_rows = []
+            for row_idx in range(all_data.shape[0]):
+                matrix_st = self._discrete_column_matrix_st[condition_col]
+                matrix_ed = matrix_st + self._discrete_column_n_category[condition_col]
+                actual_choice = np.argmax(all_data[row_idx, matrix_st:matrix_ed])
+                if actual_choice == condition_opt:
+                    matching_rows.append(row_idx)
+            
+            if matching_rows:
+                # Randomly select one of the matching rows
+                selected_row = np.random.choice(matching_rows)
+                result.append(all_data[selected_row])
+            else:
+                # If no matching data found, just sample randomly (fallback)
+                selected_row = np.random.choice(len(all_data))
+                result.append(all_data[selected_row])
+        
+        return np.array(result)
     
     def dim_cond_vec(self):
         return self._n_categories

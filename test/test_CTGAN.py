@@ -32,5 +32,12 @@ def test_CTGAN(data):
         assert isinstance(sampled_data, torch.Tensor), "Sampled data must be tensor!"
         #assert isinstance(sampled_data, type(dataloader.dataset)), "Sampled data type mismatch"
 
+def test_CTGAN_dataframe_support(data):
+    """Test CTGAN with DataFrame input using shared utility"""
+    from dataframe_test_utils import test_dataframe_support
+    
+    config = {"epochs": 2, "batch_size": 32, "embedding_dim": 64, "pac": 1}  # Use pac=1 for simplicity
+    test_dataframe_support('CTGAN', config, n_samples=10)
+
 if __name__ == "__main__":
     test_CTGAN(load_and_process_data())
