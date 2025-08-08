@@ -1,7 +1,8 @@
 from syntest import DataHost
 import torch
 import itertools
-
+import pandas as pd
+import numpy as np
 
 import dask.dataframe as dd
 from lddp_optimus import TableTransformer
@@ -132,10 +133,62 @@ def validate_output(real_df, sampled_data, data_info, config, tableTransformer):
     print(real_df.head())
     print(synthetic_df.head())
 
-    
 
+def create_test_dataframe():
+    """Create a simple test DataFrame for testing DataFrame input functionality"""
+    np.random.seed(42)  # For reproducible tests
     
+    df = pd.DataFrame({
+        'numeric_col': np.random.randn(100),
+        'categorical_col': np.random.choice(['A', 'B', 'C'], 100),
+        'binary_col': np.random.choice([0, 1], 100),
+        'float_col': np.random.uniform(0, 1, 100)
+    })
+    
+    return df
 
 
+def test_dataframe_support(model_name, config=None, n_samples=10):
+    """
+    Generic test function for DataFrame support that can be used by any synthesizer
     
+    Args:
+        model_name (str): Name of the synthesizer model
+        config (dict): Configuration parameters for the model
+        n_samples (int): Number of samples to generate
+    
+    Returns:
+        bool: True if test passes
+    """
+    import sys
+    import os
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+    from stg.tableSynthesizer import TableSynthesizer
+    
+    # Create test DataFrame
+    df = create_test_dataframe()
+    
+    # Use default config if none provided
+    if config is None:
+        config = {"epochs": 1, "batch_size": 32}
+    
+    # Initialize synthesizer
+    synthesizer = TableSynthesizer(model_name, config)
+    
+    # Test fitting with DataFrame
+    synthesizer.fit(df, batch_size=32)
+    
+    # Test tensor output
+    sampled_tensor = synthesizer.sample(n=n_samples)
+    assert sampled_tensor.shape[0] == n_samples, f"Expected {n_samples} samples, got {sampled_tensor.shape[0]}"
+    assert isinstance(sampled_tensor, torch.Tensor), f"Expected torch.Tensor, got {type(sampled_tensor)}"
+    
+    # Test DataFrame output
+    sampled_df = synthesizer.sample(n=n_samples, return_dataframe=True)
+    assert sampled_df.shape[0] == n_samples, f"Expected {n_samples} samples, got {sampled_df.shape[0]}"
+    assert isinstance(sampled_df, pd.DataFrame), f"Expected pd.DataFrame, got {type(sampled_df)}"
+    assert list(sampled_df.columns) == ['numeric_col', 'categorical_col', 'binary_col', 'float_col'], "Column names mismatch"
+    
+    print(f"{model_name} DataFrame test passed successfully!")
+    return True
 

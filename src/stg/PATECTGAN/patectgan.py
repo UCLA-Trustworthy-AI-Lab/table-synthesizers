@@ -158,7 +158,7 @@ class PATECTGAN(BaseSynthesizer):
     """
     def __init__(
         self,
-        data_info, 
+        data_info=None, 
         embedding_dim=128,
         generator_dim=(256, 256),
         discriminator_dim=(256, 256),
@@ -185,7 +185,7 @@ class PATECTGAN(BaseSynthesizer):
         checkpoint_interval_seconds = 30,
         **kwarg,
     ):
-        BaseSynthesizer.__init__(self, checkpoint_interval_seconds)
+        BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwarg)
         assert batch_size % 2 == 0
 
         self._embedding_dim = embedding_dim
@@ -218,7 +218,11 @@ class PATECTGAN(BaseSynthesizer):
         self.moments_order = moments_order
         self.delta = delta
 
-        self._transformer = TableTransformerInfo(data_info['transform_info'])
+        # Initialize transformer if data_info is provided
+        if data_info is not None:
+            self._transformer = TableTransformerInfo(data_info['transform_info'])
+        else:
+            self._transformer = None
 
         if not cuda or not torch.cuda.is_available():
             device = "cpu"
@@ -229,11 +233,15 @@ class PATECTGAN(BaseSynthesizer):
 
         self._device = torch.device(device)
 
-    def train(
+    def _train(
         self,
         train_dataloader
     ):
         #self.start_threading()
+
+        # Create transformer from data_info if needed
+        if self._transformer is None and self.data_info is not None:
+            self._transformer = TableTransformerInfo(self.data_info['transform_info'])
 
         self._batch_size = min(self._batch_size, len(train_dataloader.dataset))
 
