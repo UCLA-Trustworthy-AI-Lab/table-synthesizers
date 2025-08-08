@@ -1,7 +1,4 @@
 torch
-pandas
-numpy
-scikit-learn
 pandas>=2.1.0
 numpy>=1.24.3
 scikit-learn>=1.3.1
@@ -11,7 +8,31 @@ category_encoders
 tomli
 libzero==0.0.8
 
-# For AIM
+# For SMOTE synthesizer
+imbalanced-learn>=0.12.0
+
+# For Gen_MIA synthesizers (synthcity-based: BayesianNetwork, GREAT, ARF, NFlow)
+# Note: synthcity requires PyTorch >=2.1 and has compatibility issues with some versions
+# Comment out if you encounter torch.nn.RMSNorm AttributeError
+synthcity>=0.2.12
+
+# Additional dependencies for synthcity (automatically installed with synthcity)
+# lifelines>=0.29.0
+# opacus>=1.3.0
+# optuna>=3.1
+# shap
+# networkx>=2.0,<3.0
+# xgboost>=2.0
+# redis
+# fastai>=2.7
+
+# For AutoDiff synthesizer (dependencies already covered by base requirements)
+# Uses: torch, pandas, numpy, tqdm (which comes with jupyter environments)
+
+# For TabSyn synthesizer (dependencies already covered by base requirements)
+# Uses: torch, pandas, numpy, subprocess (built-in), tempfile (built-in)
+
+# For AIM (currently disabled due to dependency complexity)
 #opendp==0.7.0
 #autodp==0.2
 #private-pgm @ git+https://github.com/ryan112358/private-pgm.git

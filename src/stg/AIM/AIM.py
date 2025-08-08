@@ -11,7 +11,8 @@ import itertools
 import argparse
 from collections import defaultdict
 
-from mbi import GraphicalModel, FactoredInference, Domain, Factor
+from mbi import MarkovRandomField, Domain, Factor
+# GraphicalModel and FactoredInference not available in this mbi version
 from .mechanism import Mechanism
 from .cdp2adp import cdp_rho
 from .hdmm_matrix import Identity

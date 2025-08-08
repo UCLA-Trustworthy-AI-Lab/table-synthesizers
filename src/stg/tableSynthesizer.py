@@ -11,6 +11,59 @@ except ImportError:
     print("Warning: AIM not available due to missing dependencies")
 from .TVAE import TVAE
 
+# New synthesizers that only support DataFrame input
+from .CART import CARTSynthesizer
+from .DPCART import DPCARTSynthesizer
+try:
+    from .SMOTE import SMOTESynthesizer
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    print("Warning: SMOTE not available due to missing dependencies (imbalanced-learn)")
+
+# New synthesizers from Gen_MIA experiments
+try:
+    from .BayesianNetwork import BayesianNetworkSynthesizer
+    BAYESIANNETWORK_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    BAYESIANNETWORK_AVAILABLE = False
+    print(f"Warning: BayesianNetwork not available due to dependencies: {str(e)}")
+
+try:
+    from .GREAT import GREATSynthesizer
+    GREAT_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    GREAT_AVAILABLE = False
+    print(f"Warning: GREAT not available due to dependencies: {str(e)}")
+
+try:
+    from .ARF import ARFSynthesizer
+    ARF_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    ARF_AVAILABLE = False
+    print(f"Warning: ARF not available due to dependencies: {str(e)}")
+
+try:
+    from .NFlow import NFlowSynthesizer
+    NFLOW_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    NFLOW_AVAILABLE = False
+    print(f"Warning: NFlow not available due to dependencies: {str(e)}")
+
+try:
+    from .AutoDiff import AutoDiffSynthesizer
+    AUTODIFF_AVAILABLE = True
+except ImportError:
+    AUTODIFF_AVAILABLE = False
+    print("Warning: AutoDiff not available due to missing dependencies")
+
+try:
+    from .TabSyn import TabSynSynthesizer
+    TABSYN_AVAILABLE = True
+except ImportError:
+    TABSYN_AVAILABLE = False
+    print("Warning: TabSyn not available due to missing dependencies")
+
 import numpy as np
 import torch
 
@@ -18,10 +71,33 @@ DEFAULT_MODELS = {"Identity":Identity,
                   "CTGAN":CTGAN,
                   "TabDDPM":TabDDPM,
                   "PATECTGAN":PATECTGAN,
-                  "TVAE":TVAE}
+                  "TVAE":TVAE,
+                  "CART":CARTSynthesizer,
+                  "DPCART":DPCARTSynthesizer}
 
 if AIM_AVAILABLE:
     DEFAULT_MODELS["AIM"] = AIM
+
+if SMOTE_AVAILABLE:
+    DEFAULT_MODELS["SMOTE"] = SMOTESynthesizer
+
+if BAYESIANNETWORK_AVAILABLE:
+    DEFAULT_MODELS["BayesianNetwork"] = BayesianNetworkSynthesizer
+
+if GREAT_AVAILABLE:
+    DEFAULT_MODELS["GREAT"] = GREATSynthesizer
+
+if ARF_AVAILABLE:
+    DEFAULT_MODELS["ARF"] = ARFSynthesizer
+
+if NFLOW_AVAILABLE:
+    DEFAULT_MODELS["NFlow"] = NFlowSynthesizer
+
+if AUTODIFF_AVAILABLE:
+    DEFAULT_MODELS["AutoDiff"] = AutoDiffSynthesizer
+
+if TABSYN_AVAILABLE:
+    DEFAULT_MODELS["TabSyn"] = TabSynSynthesizer
 
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 

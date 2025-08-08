@@ -330,8 +330,8 @@ class BaseSynthesizer:
           estimated_remaining_time = remaining_epochs * estimated_time_per_epoch
           message = f"Current training_epoch: {self.current_epoch}. Training loss: {current_loss}. Estimated remaining time: {estimated_remaining_time}."
       # Send info to frontend.
-
-      self.messageSender.reportLoss(current_loss,remaining_epochs,estimated_remaining_time,message,self.passed_training_time)
+      if self.messageSender is not None:
+          self.messageSender.reportLoss(current_loss,remaining_epochs,estimated_remaining_time,message,self.passed_training_time)
       
       # Start another timer if necessary
       if self.current_epoch <= self._epochs:  # or whatever condition you want to stop the updates
