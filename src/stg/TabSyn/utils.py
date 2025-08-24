@@ -1,30 +1,52 @@
 import argparse
 import importlib
+import traceback
 
 def execute_function(method, mode):
     if method == 'vae':
         mode = 'train'
     mode = 'main' if mode == 'train' else 'sample'
 
-    if method == 'vae':
-        module_name = f"tabsyn.vae.main"
-    elif method == 'tabsyn':
-        module_name = f"tabsyn.{mode}"
-    elif method == 'tabddpm':
-        module_name = f"baselines.tabddpm.main_train" if mode == 'main' else f"baselines.tabddpm.main_sample"
-    else:
-        module_name = f"baselines.{method}.{mode}"
+    # Build module path; if running as part of package (e.g., stg.TabSyn), prefix accordingly
+    base_prefix = f"{__package__}." if __package__ else ""
 
-    try:
-        train_module = importlib.import_module(module_name)
-        train_function = getattr(train_module, 'main')
-    except ModuleNotFoundError:
-        print(f"Module {module_name} not found.")
-        exit(1)
-    except AttributeError:
-        print(f"Function 'main' not found in module {module_name}.")
-        exit(1)
-    return train_function
+    if method == 'vae':
+        module_suffix = "tabsyn.vae.main"
+    elif method == 'tabsyn':
+        module_suffix = f"tabsyn.{mode}"
+    elif method == 'tabddpm':
+        module_suffix = "baselines.tabddpm.main_train" if mode == 'main' else "baselines.tabddpm.main_sample"
+    else:
+        module_suffix = f"baselines.{method}.{mode}"
+
+    # Try absolute within package first if available, then fallback to local top-level
+    candidate_modules = [
+        f"{base_prefix}{module_suffix}" if base_prefix else module_suffix,
+        module_suffix,
+    ]
+
+    last_exc = None
+    for module_name in candidate_modules:
+        try:
+            train_module = importlib.import_module(module_name)
+            train_function = getattr(train_module, 'main')
+            return train_function
+        except ModuleNotFoundError as e:
+            last_exc = e
+            continue
+        except AttributeError:
+            print(f"Function 'main' not found in module {module_name}.")
+            traceback.print_exc()
+            exit(1)
+
+    # If we get here, none of the module candidates could be imported
+    print(f"Failed to import module. Tried: {candidate_modules}")
+    if last_exc is not None:
+        print(f"Last import error: {last_exc}")
+        traceback.print_exc()
+    exit(1)
+    
+    
 
 def get_args():
     parser = argparse.ArgumentParser(description='Pipeline')

@@ -3,12 +3,12 @@
     "task_type": "regression",
     "header": "infer",
     "column_names": null,
-    "num_col_idx": [],
-    "cat_col_idx": [
+    "num_col_idx": [
         0,
         1,
         2
     ],
+    "cat_col_idx": [],
     "target_col_idx": [
         3
     ],
