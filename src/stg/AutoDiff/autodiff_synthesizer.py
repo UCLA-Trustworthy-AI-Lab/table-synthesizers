@@ -34,7 +34,16 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         super().__init__(data_info=data_info, **kwargs)
         
-        # AutoDiff parameters
+        # Extract and use config parameters if provided
+        # Support both 'epochs' and 'n_epochs' for compatibility
+        if 'epochs' in kwargs:
+            n_epochs = kwargs['epochs']
+        if 'diff_n_epochs' in kwargs:
+            diff_n_epochs = kwargs['diff_n_epochs']
+        if 'batch_size' in kwargs:
+            batch_size = kwargs['batch_size']
+            
+        # AutoDiff parameters with config override support
         self.threshold = threshold
         self.n_epochs = n_epochs
         self.lr = lr
@@ -63,8 +72,9 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         print(f"AutoDiff: training on {len(self.stored_data)} samples")
         
-        # Set device
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # Set device using base class
+        self.set_device()
+        device = self.device
         
         # AutoDiff parameters
         eps = 1e-5
@@ -116,7 +126,7 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         if self.ds is None or self.score is None:
             raise RuntimeError("Model must be trained before generating samples")
         
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = self.device
         
         latent_features = self.ds[1].detach()
         

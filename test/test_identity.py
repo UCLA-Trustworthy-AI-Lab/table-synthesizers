@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
+from utils import run_sandbox_dataset_test
 
 @pytest.fixture
 def data():
@@ -30,9 +31,24 @@ def test_identity_return(data):
 
 def test_identity_dataframe_support(data):
     """Test Identity with DataFrame input using shared utility"""
-    from dataframe_test_utils import test_dataframe_support
+    from utils import test_dataframe_support
     
     config = {"bootstrap": False}
     test_dataframe_support('Identity', config, n_samples=10)
+
+
+def test_identity_sandbox_insurance():
+    """Test Identity on insurance dataset"""
+    run_sandbox_dataset_test('Identity', 'insurance', n_samples=50, sample_ratio=0.2)
+
+
+def test_identity_sandbox_adult():
+    """Test Identity on adult dataset"""
+    run_sandbox_dataset_test('Identity', 'adult', n_samples=50, sample_ratio=0.1)
+
+
+def test_identity_sandbox_covtype():
+    """Test Identity on covtype dataset"""
+    run_sandbox_dataset_test('Identity', 'covtype', n_samples=50, sample_ratio=0.01)
 
 

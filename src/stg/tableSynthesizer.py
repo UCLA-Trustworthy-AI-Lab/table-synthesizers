@@ -68,7 +68,7 @@ import numpy as np
 import torch
 
 DEFAULT_MODELS = {"Identity":Identity,
-                  "CTGAN":CTGAN,
+                  #"CTGAN":CTGAN,
                   "TabDDPM":TabDDPM,
                   "PATECTGAN":PATECTGAN,
                   "TVAE":TVAE,

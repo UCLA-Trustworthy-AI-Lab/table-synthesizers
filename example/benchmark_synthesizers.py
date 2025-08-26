@@ -23,6 +23,7 @@ from pathlib import Path
 from datetime import datetime
 import warnings
 import json
+from sklearn.model_selection import train_test_split
 
 # Add src to the path
 sys.path.insert(0, os.path.abspath('../src'))
@@ -258,9 +259,46 @@ def run_synthesizer_with_timeout(name, df, config, n_samples, timeout=1800):
         synthesizer = TableSynthesizer(name, config)
         update_peak_memory()
         
-        # Fit the synthesizer  
+        # Split data into train/test (80/20) - only use train for fitting
+        print(f"    📊 Splitting data: {df.shape[0]} total samples")
+        
+        # Use stratified split if we have categorical columns to preserve distributions
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        stratify_col = None
+        
+        if len(categorical_cols) > 0:
+            # Use the first categorical column for stratification, or create combined key if multiple
+            try:
+                if len(categorical_cols) == 1:
+                    stratify_col = df[categorical_cols[0]]
+                else:
+                    # Combine multiple categorical columns for stratification
+                    stratify_col = df[categorical_cols].astype(str).apply(
+                        lambda x: '_'.join(x), axis=1
+                    )
+                
+                # Check if stratification is viable (need at least 2 samples per category)
+                if stratify_col.value_counts().min() < 2:
+                    stratify_col = None
+                    print("    ⚠️  Too few samples per category for stratification, using random split")
+                    
+            except Exception as e:
+                stratify_col = None
+                print(f"    ⚠️  Stratification failed ({e}), using random split")
+        
+        # Perform the split
+        train_df, test_df = train_test_split(
+            df,
+            test_size=0.2,
+            random_state=42,
+            stratify=stratify_col
+        )
+        
+        print(f"    📈 Train: {train_df.shape[0]} samples, Test: {test_df.shape[0]} samples")
+        
+        # Fit the synthesizer on training data only
         fit_start = time.time()
-        synthesizer.fit(df)
+        synthesizer.fit(train_df)
         fit_time = time.time() - fit_start
         update_peak_memory()
         
@@ -273,7 +311,7 @@ def run_synthesizer_with_timeout(name, df, config, n_samples, timeout=1800):
         duration = time.time() - start_time
         memory_used = peak_memory - initial_memory
         
-        # Basic quality metrics
+        # Enhanced quality metrics including train/test split info
         quality_metrics = {
             'fit_time': fit_time,
             'generation_time': gen_time,
@@ -282,11 +320,19 @@ def run_synthesizer_with_timeout(name, df, config, n_samples, timeout=1800):
             'output_shape': synthetic_df.shape,
             'columns_match': set(df.columns) == set(synthetic_df.columns),
             'dtypes_preserved': len([c for c in df.columns 
-                                   if df[c].dtype == synthetic_df[c].dtype])
+                                   if df[c].dtype == synthetic_df[c].dtype]),
+            # Split information
+            'original_data_size': df.shape[0],
+            'train_data_size': train_df.shape[0],
+            'test_data_size': test_df.shape[0],
+            'train_split_ratio': train_df.shape[0] / df.shape[0],
+            'stratified_split': stratify_col is not None,
+            'categorical_columns': len(categorical_cols)
         }
         
         print(f"  ✅ {name} completed in {duration:.1f}s (fit: {fit_time:.1f}s, gen: {gen_time:.1f}s)")
-        print(f"     Memory: {memory_used:.1f}MB, Shape: {synthetic_df.shape}")
+        print(f"     Memory: {memory_used:.1f}MB, Synthetic: {synthetic_df.shape}")
+        print(f"     Trained on: {train_df.shape[0]}/{df.shape[0]} samples ({train_df.shape[0]/df.shape[0]*100:.0f}%)")
         
         # Clean up
         del synthesizer
@@ -340,6 +386,7 @@ def main():
     print(f"📊 Dataset: {input_path}")
     print(f"📁 Output: {output_path}")
     print(f"⏱️ Timeout: {args.timeout}s per synthesizer")
+    print(f"🔄 Train/Test Split: 80/20 with stratification (seed=42)")
     print("-" * 80)
     
     # Load and analyze dataset

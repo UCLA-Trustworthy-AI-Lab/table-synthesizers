@@ -22,7 +22,10 @@ example/test_results/*
 example/workspace/*
 example/workspace
 example/benchmark_results/*
+example/comprehensive_results*/*
+example/sandbox*/*
 *nohup.out
+example/command
 
 src/stg/TabSyn/data/*
 src/stg/TabSyn/data/test_tabsyn_df/*

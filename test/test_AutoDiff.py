@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from stg.tableSynthesizer import TableSynthesizer
+from utils import run_sandbox_dataset_test
 
 # Check if AutoDiff is available
 try:
@@ -99,6 +100,20 @@ def test_AutoDiff_different_data_types():
     print("AutoDiff different data types test passed!")
 
 
+@pytest.mark.skipif(not AUTODIFF_AVAILABLE, reason="AutoDiff not available due to missing dependencies")
+def test_AutoDiff_sandbox_insurance():
+    """Test AutoDiff on insurance dataset"""
+    config = {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 16}
+    run_sandbox_dataset_test('AutoDiff', 'insurance', config=config, n_samples=50, sample_ratio=0.1)
+
+
+@pytest.mark.skipif(not AUTODIFF_AVAILABLE, reason="AutoDiff not available due to missing dependencies") 
+def test_AutoDiff_sandbox_adult():
+    """Test AutoDiff on adult dataset"""
+    config = {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 16}
+    run_sandbox_dataset_test('AutoDiff', 'adult', config=config, n_samples=50, sample_ratio=0.05)
+
+
 def test_AutoDiff_availability():
     """Test if AutoDiff is properly detected as available or not"""
     if AUTODIFF_AVAILABLE:
@@ -114,3 +129,7 @@ if __name__ == "__main__":
         test_AutoDiff_initialization()
         test_AutoDiff_dataframe_support() 
         test_AutoDiff_different_data_types()
+        
+        # Test sandbox datasets
+        test_AutoDiff_sandbox_insurance()
+        test_AutoDiff_sandbox_adult()

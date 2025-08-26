@@ -9,6 +9,7 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from stg.tableSynthesizer import TableSynthesizer
+from utils import run_sandbox_dataset_test
 
 # Check if TabSyn is available
 try:
@@ -114,6 +115,18 @@ def test_TabSyn_different_data_types():
     assert all(col in synthetic_df.columns for col in df.columns)
     
     print("[TEST][TabSyn] different data types test passed!", flush=True)
+
+
+@pytest.mark.skipif(not TABSYN_AVAILABLE, reason="TabSyn not available due to missing dependencies")
+def test_TabSyn_sandbox_insurance():
+    """Test TabSyn on insurance dataset"""
+    run_sandbox_dataset_test('TabSyn', 'insurance', n_samples=50, sample_ratio=0.1)
+
+
+@pytest.mark.skipif(not TABSYN_AVAILABLE, reason="TabSyn not available due to missing dependencies") 
+def test_TabSyn_sandbox_adult():
+    """Test TabSyn on adult dataset"""
+    run_sandbox_dataset_test('TabSyn', 'adult', n_samples=50, sample_ratio=0.05)
 
 
 def test_TabSyn_availability():
