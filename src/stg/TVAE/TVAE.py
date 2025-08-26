@@ -140,11 +140,12 @@ class TVAE(BaseSynthesizer):
     self.loss_factor = loss_factor
     self._epochs = epochs
     
-    # Set device
+    # Set device - use base class method
+    self.set_device()
     if not cuda or not torch.cuda.is_available():
-        self._device = torch.device("cpu")
+        self.set_device(torch.device("cpu"))
     else:
-        self._device = torch.device("cuda")
+        self.set_device(torch.device("cuda"))
         
     # Initialize transformer if data_info is provided
     if data_info is not None:

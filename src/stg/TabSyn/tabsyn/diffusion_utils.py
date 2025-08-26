@@ -19,7 +19,9 @@ S_min=0
 S_max=float('inf')
 S_noise=1
 
-def sample(net, num_samples, dim, num_steps = 50, device = 'cuda:0'):
+def sample(net, num_samples, dim, num_steps = 50, device = None):
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     latents = torch.randn([num_samples, dim], device=device)
 
     step_indices = torch.arange(num_steps, dtype=torch.float32, device=latents.device)

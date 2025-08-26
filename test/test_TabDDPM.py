@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
+from utils import run_sandbox_dataset_test, load_sandbox_datasets
 
 @pytest.fixture
 def data():
@@ -32,5 +33,25 @@ def test_TabDDPM(data):
         assert isinstance(sampled_data, torch.Tensor), "Sampled data must be tensor!"
         #assert isinstance(sampled_data, type(dataloader.dataset)), "Sampled data type mismatch"
 
+
+def test_TabDDPM_sandbox_insurance():
+    """Test TabDDPM on insurance dataset with mixed categorical/numerical data"""
+    run_sandbox_dataset_test('TabDDPM', 'insurance', n_samples=50, sample_ratio=0.1)
+
+
+def test_TabDDPM_sandbox_adult():
+    """Test TabDDPM on adult dataset with many categorical features"""
+    run_sandbox_dataset_test('TabDDPM', 'adult', n_samples=50, sample_ratio=0.05)
+
+
+def test_TabDDPM_sandbox_covtype():
+    """Test TabDDPM on covtype dataset with binary features"""
+    run_sandbox_dataset_test('TabDDPM', 'covtype', n_samples=50, sample_ratio=0.01)
+
 if __name__ == "__main__":
     test_TabDDPM(load_and_process_data())
+    
+    # Test sandbox datasets
+    test_TabDDPM_sandbox_insurance()
+    test_TabDDPM_sandbox_adult()
+    test_TabDDPM_sandbox_covtype()

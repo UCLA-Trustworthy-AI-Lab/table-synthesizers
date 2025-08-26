@@ -244,9 +244,9 @@ class CTGAN(BaseSynthesizer):
         steps = n // self._batch_size + 1
         data = []
         for i in range(steps):
-            mean = torch.zeros(self._batch_size, self._embedding_dim)
+            mean = torch.zeros(self._batch_size, self._embedding_dim, device=self._device)
             std = mean + 1
-            fakez = torch.normal(mean=mean, std=std).to(self._device)
+            fakez = torch.normal(mean=mean, std=std)
 
             if global_condition_vec is not None:
                 condvec = global_condition_vec.copy()
@@ -277,6 +277,8 @@ class CTGAN(BaseSynthesizer):
         self._device = device
         if self._generator is not None:
             self._generator.to(self._device)
+        if hasattr(self, 'discriminator') and self.discriminator is not None:
+            self.discriminator.to(self._device)
             
   def init_model(self, train_dataloader):
         """Initialize data sampler, generator and synthesizers."""

@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from stg.tableSynthesizer import TableSynthesizer
+from utils import run_sandbox_dataset_test, load_sandbox_datasets
 
 # Check if SMOTE is available
 try:
@@ -140,6 +141,18 @@ def test_SMOTE_with_mixed_features():
     print("SMOTE mixed features test passed!")
 
 
+@pytest.mark.skipif(not SMOTE_AVAILABLE, reason="SMOTE not available due to missing dependencies")
+def test_SMOTE_sandbox_adult():
+    """Test SMOTE on adult dataset (classification task)"""
+    run_sandbox_dataset_test('SMOTE', 'adult', n_samples=100, sample_ratio=0.05)
+
+
+@pytest.mark.skipif(not SMOTE_AVAILABLE, reason="SMOTE not available due to missing dependencies") 
+def test_SMOTE_sandbox_covtype():
+    """Test SMOTE on covtype dataset (multi-class classification)"""
+    run_sandbox_dataset_test('SMOTE', 'covtype', n_samples=100, sample_ratio=0.01)
+
+
 def test_SMOTE_availability():
     """Test if SMOTE is properly detected as available or not"""
     if SMOTE_AVAILABLE:
@@ -156,3 +169,7 @@ if __name__ == "__main__":
         test_SMOTE_dataframe_support() 
         test_SMOTE_auto_target_detection()
         test_SMOTE_with_mixed_features()
+        
+        # Test sandbox datasets
+        test_SMOTE_sandbox_adult()
+        test_SMOTE_sandbox_covtype()

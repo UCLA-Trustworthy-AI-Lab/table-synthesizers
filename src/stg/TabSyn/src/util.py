@@ -185,7 +185,7 @@ def load_checkpoint(path: Path, *args, **kwargs) -> Dict[str, np.ndarray]:
 def get_device() -> torch.device:
     if torch.cuda.is_available():
         assert os.environ.get('CUDA_VISIBLE_DEVICES') is not None
-        return torch.device('cuda:0')
+        return torch.device('cuda')
     else:
         return torch.device('cpu')
 

@@ -260,9 +260,19 @@ def convert_to_table(org_df, gen_output, threshold):
     n_bins = datatype_info['n_bins']; n_cats = datatype_info['n_cats']
     n_nums = datatype_info['n_nums']; cards = datatype_info['cards']
  
-    cat_tensor = torch.empty(org_df.shape[0], n_cats)
-    bin_tensor = torch.empty(org_df.shape[0], n_bins)
-    num_tensor = torch.empty(org_df.shape[0], n_nums)
+    # Determine number of generated samples from gen_output instead of using org_df shape
+    if n_nums != 0 and 'nums' in gen_output:
+        num_samples = gen_output['nums'].shape[0]
+    elif n_bins != 0 and 'bins' in gen_output:
+        num_samples = gen_output['bins'].shape[0]
+    elif len(cards) != 0 and 'cats' in gen_output and len(gen_output['cats']) > 0:
+        num_samples = gen_output['cats'][0].shape[0]
+    else:
+        num_samples = org_df.shape[0]
+
+    cat_tensor = torch.empty(num_samples, n_cats)
+    bin_tensor = torch.empty(num_samples, n_bins)
+    num_tensor = torch.empty(num_samples, n_nums)
     
     if n_nums != 0:
         num_tensor = gen_output['nums'].detach()

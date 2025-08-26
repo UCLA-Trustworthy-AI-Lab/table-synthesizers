@@ -4,6 +4,8 @@ import os
 import sys
 import json
 import argparse
+from sklearn.model_selection import train_test_split
+import warnings
 
 TYPE_TRANSFORM ={
     'float', np.float32,
@@ -116,38 +118,178 @@ def get_column_name_mapping(data_df, num_col_idx, cat_col_idx, target_col_idx, c
     return idx_mapping, inverse_idx_mapping, idx_name_mapping
 
 
-def train_val_test_split(data_df, cat_columns, num_train = 0, num_test = 0):
+def train_val_test_split(data_df, cat_columns, num_train = 0, num_test = 0, max_attempts=1000):
+    """
+    Robust train_val_test_split that prevents infinite loops.
+    
+    Strategies implemented:
+    1. Stratified sampling for categorical variables (when possible)
+    2. Limited attempts with fallback (prevents infinite loops)
+    3. Best-effort category preservation
+    4. Graceful degradation for edge cases
+    
+    Args:
+        data_df: Input DataFrame
+        cat_columns: List of categorical column names
+        num_train: Number of training samples
+        num_test: Number of test samples
+        max_attempts: Maximum random attempts before fallback (default: 1000)
+    """
     total_num = data_df.shape[0]
-    idx = np.arange(total_num)
-
-
-    seed = 1234
-
-    while True:
+    
+    # Validation checks
+    if num_train + num_test > total_num:
+        raise ValueError(f"Requested samples ({num_train + num_test}) exceed dataset size ({total_num})")
+    
+    if num_train == 0 or num_test == 0:
+        raise ValueError("Both num_train and num_test must be > 0")
+    
+    print(f"TabSyn split: train={num_train}, test={num_test}, total={total_num}")
+    
+    # Strategy 1: Try stratified sampling if we have categorical columns
+    if cat_columns:
+        try:
+            # Create stratification key from categorical columns
+            if len(cat_columns) == 1:
+                stratify_col = data_df[cat_columns[0]]
+            else:
+                # Combine multiple categorical columns
+                stratify_col = data_df[cat_columns].apply(
+                    lambda x: '_'.join(x.astype(str)), axis=1
+                )
+            
+            # Check if stratification is viable
+            value_counts = stratify_col.value_counts()
+            min_count = value_counts.min()
+            
+            if min_count >= 2:  # Need at least 2 samples per category
+                test_size = num_test / total_num
+                train_idx, test_idx = train_test_split(
+                    range(total_num), 
+                    test_size=test_size, 
+                    stratify=stratify_col, 
+                    random_state=42
+                )
+                
+                # Adjust for exact sizes
+                if len(train_idx) != num_train:
+                    diff = num_train - len(train_idx)
+                    if diff > 0 and len(test_idx) >= diff:
+                        # Move samples from test to train
+                        extra_idx = test_idx[:diff]
+                        train_idx = np.concatenate([train_idx, extra_idx])
+                        test_idx = test_idx[diff:]
+                    elif diff < 0 and abs(diff) <= len(train_idx):
+                        # Move samples from train to test
+                        extra_idx = train_idx[num_train:]
+                        train_idx = train_idx[:num_train]
+                        test_idx = np.concatenate([test_idx, extra_idx])
+                
+                train_df = data_df.iloc[train_idx].copy()
+                test_df = data_df.iloc[test_idx].copy()
+                
+                # Check if all categories are preserved
+                categories_preserved = True
+                for col in cat_columns:
+                    train_cats = set(train_df[col])
+                    all_cats = set(data_df[col])
+                    if train_cats != all_cats:
+                        categories_preserved = False
+                        break
+                
+                if categories_preserved:
+                    print("✅ Stratified sampling successful - all categories preserved")
+                    return train_df, test_df, 42
+                else:
+                    print("⚠️ Stratified sampling preserved most but not all categories")
+                    
+        except Exception as e:
+            print(f"⚠️ Stratified sampling failed: {e}, using random sampling...")
+    
+    # Strategy 2: Limited random attempts (prevents infinite loops)
+    print(f"Trying random sampling with up to {max_attempts} attempts...")
+    
+    best_train_df, best_test_df, best_seed = None, None, None
+    best_missing_categories = float('inf')
+    
+    for attempt in range(max_attempts):
+        seed = 1234 + attempt
         np.random.seed(seed)
+        
+        # Random shuffle and split
+        idx = np.arange(total_num)
         np.random.shuffle(idx)
-
+        
         train_idx = idx[:num_train]
         test_idx = idx[-num_test:]
-
-
+        
         train_df = data_df.loc[train_idx]
         test_df = data_df.loc[test_idx]
-
-
-
-        flag = 0
-        for i in cat_columns:
-            if len(set(train_df[i])) != len(set(data_df[i])):
-                flag = 1
-                break
-
-        if flag == 0:
-            break
-        else:
-            seed += 1
         
-    return train_df, test_df, seed    
+        # Check category preservation
+        missing_categories = 0
+        for col in cat_columns:
+            train_cats = set(train_df[col])
+            all_cats = set(data_df[col])
+            missing_categories += len(all_cats - train_cats)
+        
+        # Perfect split found
+        if missing_categories == 0:
+            print(f"✅ Perfect split found at attempt {attempt + 1}")
+            return train_df, test_df, seed
+        
+        # Track best attempt
+        if missing_categories < best_missing_categories:
+            best_missing_categories = missing_categories
+            best_train_df, best_test_df, best_seed = train_df.copy(), test_df.copy(), seed
+        
+        # Early stopping for reasonable splits
+        if missing_categories <= 2 and attempt >= 100:
+            print(f"✅ Good split found at attempt {attempt + 1} (missing {missing_categories} categories)")
+            return train_df, test_df, seed
+        
+        # Progress update
+        if attempt % 200 == 199:
+            print(f"   Attempt {attempt + 1}/{max_attempts}, best missing: {best_missing_categories}")
+    
+    # Strategy 3: Use best split found (prevents infinite loops)
+    if best_train_df is not None:
+        print(f"🔄 Using best available split (missing {best_missing_categories} categories)")
+        
+        if best_missing_categories > 0:
+            print("⚠️ WARNING: Not all categorical values present in training set")
+            print("   TabSyn may have reduced performance on unseen categories")
+            
+            # Report missing categories
+            for col in cat_columns:
+                train_cats = set(best_train_df[col])
+                all_cats = set(data_df[col])
+                missing = all_cats - train_cats
+                if missing:
+                    print(f"   {col}: missing {len(missing)} categories")
+                    if len(missing) <= 5:  # Only show details for small numbers
+                        print(f"      Missing: {missing}")
+        
+        return best_train_df, best_test_df, best_seed
+    
+    # Strategy 4: Emergency fallback (should never reach here)
+    print("🚨 EMERGENCY FALLBACK: Using simple random split")
+    warnings.warn(
+        "Could not preserve categorical distributions after maximum attempts. "
+        "TabSyn may have significantly reduced performance."
+    )
+    
+    np.random.seed(1234)
+    idx = np.arange(total_num)
+    np.random.shuffle(idx)
+    
+    train_idx = idx[:num_train]  
+    test_idx = idx[-num_test:]
+    
+    train_df = data_df.loc[train_idx]
+    test_df = data_df.loc[test_idx]
+    
+    return train_df, test_df, 1234    
 
 
 def process_data(name):

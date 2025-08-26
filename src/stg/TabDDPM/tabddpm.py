@@ -125,7 +125,7 @@ class TabDDPM(BaseSynthesizer):
         }
         start_idx += 1
     
-    # Process categorical columns with Label Encoding (TabDDPM handles categoricals differently)
+    # Process categorical columns with Label Encoding (TabDDPM expects Label encoded data)
     for col in categorical_cols:
         from sklearn.preprocessing import LabelEncoder
         encoder = LabelEncoder()
@@ -156,6 +156,10 @@ class TabDDPM(BaseSynthesizer):
   
   def decode_samples(self, samples):
     """Decode TabDDPM samples back to original DataFrame format"""
+    import torch
+    import pandas as pd
+    import numpy as np
+    
     if isinstance(samples, torch.Tensor):
         samples = samples.detach().cpu().numpy()
     
@@ -169,9 +173,9 @@ class TabDDPM(BaseSynthesizer):
             # Find the GQT column
             gqt_col = f'{original_col}_gqt'
             if gqt_col in encoded_df.columns:
-                decoded_values = encoder_info['encoder'].inverse_transform(
-                    encoded_df[[gqt_col]]
-                ).flatten()
+                # Create a DataFrame with the original column name for the scaler
+                temp_df = pd.DataFrame({original_col: encoded_df[gqt_col]})
+                decoded_values = encoder_info['encoder'].inverse_transform(temp_df).flatten()
                 decoded_df[original_col] = decoded_values
         
         elif encoder_info['type'] == 'label':
