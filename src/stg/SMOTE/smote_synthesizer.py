@@ -36,9 +36,25 @@ class SMOTESynthesizer(BaseSynthesizer):
         
         self.stored_data = train_data.copy()
         
-        # Auto-detect target column if not specified (use last column)
+        # Auto-detect target column if not specified
         if self.target_column is None:
-            self.target_column = self.stored_data.columns[-1]
+            # For SMOTE, prefer categorical columns since it's a classification method
+            categorical_cols = [col for col in self.stored_data.columns 
+                              if not pd.api.types.is_numeric_dtype(self.stored_data[col])]
+            
+            if categorical_cols:
+                # Use the first categorical column as target
+                self.target_column = categorical_cols[0]
+                print(f"Using categorical column '{self.target_column}' as target for SMOTE")
+            else:
+                # If no categorical columns, bin the last column
+                last_col = self.stored_data.columns[-1]
+                print(f"No categorical columns found, binning '{last_col}' for SMOTE")
+                self.target_column = f'{last_col}_binned'
+                # Create binned version with 5 bins
+                self.stored_data[self.target_column] = pd.cut(
+                    self.stored_data[last_col], bins=5, labels=False
+                ).astype(str)
         
         # Auto-detect categorical features if not specified
         if self.categorical_features is None:
@@ -62,14 +78,25 @@ class SMOTESynthesizer(BaseSynthesizer):
             raise RuntimeError("Model must be trained before generating samples")
         
         # Handle rare categories that don't meet k_neighbors requirement
-        min_samples_needed = self.k_neighbors + 1
         target_counts = self.stored_data[self.target_column].value_counts()
+        min_class_size = target_counts.min()
+        
+        # Adapt k_neighbors for small datasets
+        effective_k = min(self.k_neighbors, max(1, min_class_size - 1))
+        min_samples_needed = effective_k + 1
+        
+        # Only filter if there would be enough data remaining
         rare_categories = target_counts[target_counts < min_samples_needed].index
         
         data_for_smote = self.stored_data.copy()
-        if len(rare_categories) > 0:
+        if len(rare_categories) > 0 and len(rare_categories) < len(target_counts):
             print(f"Removing {len(rare_categories)} rare categories with < {min_samples_needed} samples")
             data_for_smote = data_for_smote[~data_for_smote[self.target_column].isin(rare_categories)]
+        elif len(rare_categories) == len(target_counts):
+            # All categories are too small, use reduced k_neighbors
+            effective_k = max(1, min_class_size - 1)
+            print(f"Dataset too small for k_neighbors={self.k_neighbors}, using k_neighbors={effective_k}")
+            data_for_smote = self.stored_data.copy()
         
         # Use the sample_smote function with synthetic mode
         synthetic_df = sample_smote(
@@ -77,7 +104,7 @@ class SMOTESynthesizer(BaseSynthesizer):
             target=self.target_column,
             categorical_features=self.categorical_features,
             eval_type="synthetic",  # Only return synthetic samples
-            k_neighbors=self.k_neighbors,
+            k_neighbors=effective_k,
             frac_samples=self.frac_samples,
             seed=self.random_state if self.random_state is not None else 0,
             n_samples=n_samples
@@ -93,7 +120,13 @@ class SMOTESynthesizer(BaseSynthesizer):
             if not pd.api.types.is_numeric_dtype(df[col]):
                 # Encode categorical column to integers
                 categories = pd.Categorical(df[col])
-                encoded_df[col] = categories.codes
+                encoded_df[col] = categories.codes.astype(float)
+            else:
+                # Ensure numeric columns are float type
+                encoded_df[col] = pd.to_numeric(encoded_df[col], errors='coerce').astype(float)
+        
+        # Fill any NaN values with 0
+        encoded_df = encoded_df.fillna(0.0)
         
         return encoded_df
     

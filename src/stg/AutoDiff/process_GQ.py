@@ -114,7 +114,16 @@ class DataFrameParser(object):
 
         # sort through columns in dataframe.
         for column, datatype in column_to_dtype.items():
-            if datatype in ['O', '<U32']:
+            # Handle pandas CategoricalDtype
+            if hasattr(datatype, 'name') and datatype.name == 'category':
+                cardinality = self.new_dataframe[column].nunique(dropna=False)
+                if cardinality == 2:
+                    self.binary_columns.append(column)
+                else:
+                    self.categorical_columns.append(column)
+                    if cardinality > self.max_cardinality:
+                        self.need_freq_encoding.add(column)
+            elif datatype in ['O', '<U32']:
                 cardinality = self.new_dataframe[column].nunique(dropna=False)
                 if cardinality == 2:
                     self.binary_columns.append(column)

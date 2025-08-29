@@ -64,7 +64,7 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Prepare the dataset
             prep_start = time.time()
             print("[TabSyn][train] Preparing dataset and metadata...", flush=True)
-            task_type = infer_task_type(train_data.values)
+            task_type = infer_task_type(train_data)
             create_dataset_with_metadata(train_data.values, self.dataset_name, task_type)
             process_data(self.dataset_name)
             print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
@@ -78,7 +78,7 @@ class TabSynSynthesizer(BaseSynthesizer):
                 "--method", "vae",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], cwd=tabsyn_dir, check=True)
             print(f"[TabSyn][train] VAE training finished in {time.time()-vae_start:.2f}s", flush=True)
             
             # Step 2: Train the diffusion model
@@ -90,7 +90,7 @@ class TabSynSynthesizer(BaseSynthesizer):
                 "--method", "tabsyn",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], cwd=tabsyn_dir, check=True)
             print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             
             self.trained = True
@@ -139,7 +139,7 @@ class TabSynSynthesizer(BaseSynthesizer):
                 "--method", "tabsyn",
                 "--mode", "sample",
                 "--save_path", save_path
-            ], check=True)
+            ], cwd=tabsyn_dir, check=True)
             print(f"[TabSyn][sample] Sampling subprocess finished in {time.time()-subp_start:.2f}s", flush=True)
             
             # Load synthetic data
@@ -198,7 +198,13 @@ class TabSynSynthesizer(BaseSynthesizer):
             if not pd.api.types.is_numeric_dtype(df[col]):
                 # Encode categorical column to integers
                 categories = pd.Categorical(df[col])
-                encoded_df[col] = categories.codes
+                encoded_df[col] = categories.codes.astype(float)
+            else:
+                # Ensure numeric columns are float type
+                encoded_df[col] = pd.to_numeric(encoded_df[col], errors='coerce').astype(float)
+        
+        # Fill any NaN values with 0
+        encoded_df = encoded_df.fillna(0.0)
         
         return encoded_df
     

@@ -12,7 +12,7 @@ from stg.tableSynthesizer import TableSynthesizer
 # Check if GREAT is available
 try:
     from stg.tableSynthesizer import DEFAULT_MODELS
-    GREAT_AVAILABLE = 'GREAT' in DEFAULT_MODELS
+    GREAT_AVAILABLE = 'GReaT' in DEFAULT_MODELS
 except ImportError:
     GREAT_AVAILABLE = False
 
@@ -35,7 +35,7 @@ def create_test_dataframe():
 def test_GREAT_initialization():
     """Test GREAT model initialization"""
     config = {}
-    synthesizer = TableSynthesizer('GREAT', config)
+    synthesizer = TableSynthesizer('GReaT', config)
     assert synthesizer.model is not None
     print("GREAT model initialized successfully")
 
@@ -50,7 +50,7 @@ def test_GREAT_dataframe_support():
     config = {}
     
     # Initialize synthesizer
-    synthesizer = TableSynthesizer('GREAT', config)
+    synthesizer = TableSynthesizer('GReaT', config)
     
     # Test fitting with DataFrame (GREAT only supports DataFrame)
     synthesizer.fit(df)
@@ -86,7 +86,7 @@ def test_GREAT_different_data_types():
     })
     
     config = {}
-    synthesizer = TableSynthesizer('GREAT', config)
+    synthesizer = TableSynthesizer('GReaT', config)
     synthesizer.fit(df)
     
     synthetic_df = synthesizer.sample(n=15, return_dataframe=True)

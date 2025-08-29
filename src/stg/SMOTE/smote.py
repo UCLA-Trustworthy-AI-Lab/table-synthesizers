@@ -152,18 +152,26 @@ def sample_smote(
     
     # --- Process numeric features ---
     X_num = X[num_cols].copy()
-    if is_regression:
-        # Append the target to numeric features so that scaling can be inverted later.
-        X_num_target = pd.concat([X_num, y.rename("target")], axis=1)
-        scaler = MinMaxScaler().fit(X_num_target)
-        X_num_scaled = pd.DataFrame(scaler.transform(X_num_target),
-                                    columns = list(X_num.columns) + ["target"],
-                                    index=X_num_target.index)
+    if len(num_cols) > 0:  # Check if there are numeric columns
+        if is_regression:
+            # Append the target to numeric features so that scaling can be inverted later.
+            X_num_target = pd.concat([X_num, y.rename("target")], axis=1)
+            scaler = MinMaxScaler().fit(X_num_target)
+            X_num_scaled = pd.DataFrame(scaler.transform(X_num_target),
+                                        columns = list(X_num.columns) + ["target"],
+                                        index=X_num_target.index)
+        else:
+            scaler = MinMaxScaler().fit(X_num)
+            X_num_scaled = pd.DataFrame(scaler.transform(X_num),
+                                        columns = X_num.columns,
+                                        index=X_num.index)
     else:
-        scaler = MinMaxScaler().fit(X_num)
-        X_num_scaled = pd.DataFrame(scaler.transform(X_num),
-                                    columns = X_num.columns,
-                                    index=X_num.index)
+        # No numeric columns, create empty DataFrame with same index
+        scaler = None
+        if is_regression:
+            X_num_scaled = pd.DataFrame({}, index=X.index)
+        else:
+            X_num_scaled = pd.DataFrame({}, index=X.index)
     
     # --- Process categorical features ---
     cat_mapping = {}  # to store the mapping from codes back to original categories
@@ -270,19 +278,26 @@ def sample_smote(
         X_res, y_res = X_array, y_for_smote
 
     # --- Inverse-transform the numeric features ---
-    if is_regression:
-        # The numeric part includes the appended target as the last column.
-        n_num = len(X_num.columns) + 1
-        X_num_res_scaled = X_res[:, :n_num]
-        X_num_res = scaler.inverse_transform(X_num_res_scaled)
-        # Separate numeric features and the target.
-        numeric_features_res = X_num_res[:, :-1]
-        target_res_numeric = X_num_res[:, -1]
+    if scaler is not None:  # Check if we have a scaler (i.e., numeric columns exist)
+        if is_regression:
+            # The numeric part includes the appended target as the last column.
+            n_num = len(X_num.columns) + 1
+            X_num_res_scaled = X_res[:, :n_num]
+            X_num_res = scaler.inverse_transform(X_num_res_scaled)
+            # Separate numeric features and the target.
+            numeric_features_res = X_num_res[:, :-1]
+            target_res_numeric = X_num_res[:, -1]
+        else:
+            n_num = len(X_num.columns)
+            X_num_res_scaled = X_res[:, :n_num]
+            X_num_res = scaler.inverse_transform(X_num_res_scaled)
+            numeric_features_res = X_num_res
     else:
-        n_num = len(X_num.columns)
-        X_num_res_scaled = X_res[:, :n_num]
-        X_num_res = scaler.inverse_transform(X_num_res_scaled)
-        numeric_features_res = X_num_res
+        # No numeric columns
+        n_num = 0
+        numeric_features_res = np.empty((X_res.shape[0], 0))
+        if is_regression:
+            target_res_numeric = None
 
     # --- Process categorical features from SMOTE output ---
     if X_cat_encoded is not None:

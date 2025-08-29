@@ -234,7 +234,7 @@ def get_realistic_test_config(dataset_name, model_name):
         'CART': {"max_depth": 10},
         'DPCART': {"max_depth": 10, "epsilon": 1.0},
         'BayesianNetwork': {"max_parents": 3},
-        'GREAT': {"epochs": 5, "batch_size": 32},  # Reduced for testing
+        'GReaT': {"epochs": 5, "batch_size": 32},  # Reduced for testing
         'ARF': {"n_estimators": 10},  # Reduced for testing
         'NFlow': {"epochs": 10, "batch_size": 64},
         'AutoDiff': {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 32},

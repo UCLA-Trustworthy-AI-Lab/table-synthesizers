@@ -85,7 +85,7 @@ if BAYESIANNETWORK_AVAILABLE:
     DEFAULT_MODELS["BayesianNetwork"] = BayesianNetworkSynthesizer
 
 if GREAT_AVAILABLE:
-    DEFAULT_MODELS["GREAT"] = GREATSynthesizer
+    DEFAULT_MODELS["GReaT"] = GREATSynthesizer
 
 if ARF_AVAILABLE:
     DEFAULT_MODELS["ARF"] = ARFSynthesizer

@@ -14,8 +14,9 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
 
-device = 'cuda'  #@param ['cuda', 'cpu'] {'type':'string'}
-torch.cuda.empty_cache()
+device = 'cuda' if torch.cuda.is_available() else 'cpu'  #@param ['cuda', 'cpu'] {'type':'string'}
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
 
 ###########################################################################################################################################
 ModuleType = Union[str, Callable[..., nn.Module]]

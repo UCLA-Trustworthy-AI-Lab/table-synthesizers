@@ -1,0 +1,38 @@
+# Include necessary files
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+include setup.cfg
+
+# Include source code
+recursive-include src *.py
+
+# Exclude test directory and development files
+exclude test_library.py
+prune test
+global-exclude *test*.py
+global-exclude */test*
+global-exclude */tests/*
+prune example/workspace
+prune example/comprehensive_results*
+prune example/benchmark_results
+prune example/test_results
+prune workspace
+
+# Exclude development and temporary files
+exclude *.log
+exclude nohup.out
+exclude .gitignore
+exclude CLAUDE.md
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude *.swp
+global-exclude *.swo
+
+# Exclude large data files
+global-exclude *.csv
+global-exclude *.pt
+global-exclude *.bkp
