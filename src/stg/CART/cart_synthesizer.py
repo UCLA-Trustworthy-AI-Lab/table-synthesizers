@@ -96,8 +96,15 @@ class CARTSynthesizer(BaseSynthesizer):
         if return_dataframe:
             return synthetic_df
         else:
-            # Convert to tensor format for compatibility
-            return torch.tensor(synthetic_df.values, dtype=torch.float32)
+            # Convert to tensor format for compatibility - use encoded version
+            synthetic_encoded_df = self._generate_encoded(n)
+            # Ensure all data is numeric for tensor conversion
+            clean_encoded_df = synthetic_encoded_df.copy()
+            for col in clean_encoded_df.columns:
+                if not pd.api.types.is_numeric_dtype(clean_encoded_df[col]):
+                    clean_encoded_df[col] = pd.to_numeric(clean_encoded_df[col], errors='coerce')
+            clean_encoded_df = clean_encoded_df.fillna(0.0)
+            return torch.tensor(clean_encoded_df.values, dtype=torch.float32)
     
     def generate(self, n_samples, condition=None):
         """Generate synthetic samples - called by TableSynthesizer.sample()."""
@@ -110,8 +117,19 @@ class CARTSynthesizer(BaseSynthesizer):
         self._last_generated_encoded_df = synthetic_encoded_df
         self._last_generated_df = synthetic_decoded_df
         
-        # Convert encoded version to tensor for TableSynthesizer compatibility
-        return torch.tensor(synthetic_encoded_df.values, dtype=torch.float32)
+        # Ensure encoded version only contains numeric data for tensor conversion
+        # Fill any NaN values and ensure all columns are numeric
+        clean_encoded_df = synthetic_encoded_df.copy()
+        for col in clean_encoded_df.columns:
+            if not pd.api.types.is_numeric_dtype(clean_encoded_df[col]):
+                # Convert non-numeric columns to numeric
+                clean_encoded_df[col] = pd.to_numeric(clean_encoded_df[col], errors='coerce')
+        
+        # Fill any NaN values with 0
+        clean_encoded_df = clean_encoded_df.fillna(0.0)
+        
+        # Convert to tensor for TableSynthesizer compatibility
+        return torch.tensor(clean_encoded_df.values, dtype=torch.float32)
     
     def _generate_encoded(self, n_samples):
         """Generate synthetic samples in encoded format (integers only)."""

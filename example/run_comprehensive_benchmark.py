@@ -58,10 +58,10 @@ SYNTHESIZERS_CONFIG = {
 
 # Dataset files in sandbox_preprocessed
 DATASETS = [
-    'preprocessed_conversions_all_8-1-25.csv',         # 5,101 rows, 25 cols
-    'preprocessed_amazon_attributed_events_by_traffic_time_7-29-25.csv',  # 4,947 rows, 166 cols  
-    'preprocessed_sponsored_ads_traffic_7-29-25.csv',  # 10,983 rows, 50 cols
-    'preprocessed_dsp_impressions_7-29-25.csv',       # 32k rows, 183 cols
+    'preprocessed_conversionsall8125.csv',         # 5,101 rows, 25 cols
+    'preprocessed_amazonattributedeventsbytraffictime72925.csv',  # 4,947 rows, 166 cols  
+    'preprocessed_sponsoredadstraffic72925.csv',  # 10,983 rows, 50 cols
+    'preprocessed_dspimpressions72925.csv',       # 32k rows, 183 cols
 ]
 
 def get_sample_size(dataset_name, total_rows, generate_full=True):
@@ -119,7 +119,7 @@ def preprocess_dataset(df, dataset_name):
     print(f"  ✅ Preprocessed shape: {df.shape}")
     return df
 
-def test_synthesizer(synth_name, config, df, n_samples, dataset_name, output_dir):
+def test_synthesizer(synth_name, config, df, n_samples, dataset_name, output_dir, test_idx=0):
     """Test a single synthesizer with train_test_split and CSV output"""
     print(f"\n{'='*60}")
     print(f"Testing {synth_name} on {dataset_name}")
@@ -186,7 +186,10 @@ def test_synthesizer(synth_name, config, df, n_samples, dataset_name, output_dir
             raise RuntimeError("Generated 0 samples")
         
         # Save synthetic data as CSV in output directory
-        csv_filename = f"synthetic_{synth_name}_{dataset_name.replace('.csv', '')}.csv"
+        # Remove 'preprocessed_' prefix and '.csv' suffix from dataset_name
+        real_name = dataset_name.replace('preprocessed_', '').replace('.csv', '')
+        # Format: {REAL_CSV_NAME}_{SYNTHESIZER_NAME}_{TRANSFORMER_TYPE}_{TEST_IDX}.csv
+        csv_filename = f"{real_name}_{synth_name}_preprocessed_{test_idx}.csv"
         csv_path = os.path.join('..', output_dir, csv_filename)  # Go back to parent dir, then to output_dir
         synthetic_data.to_csv(csv_path, index=False)
         print(f"  💾 Saved synthetic data: {csv_path}")
@@ -266,7 +269,7 @@ def main(output_dir=None):
             for synth_name, config in SYNTHESIZERS_CONFIG.items():
                 print(f"\n🔄 Preparing to test {synth_name}...")
                 
-                result = test_synthesizer(synth_name, config, df, n_samples, dataset_file, output_dir)
+                result = test_synthesizer(synth_name, config, df, n_samples, dataset_file, output_dir, test_idx=0)
                 dataset_results[synth_name] = result
                 
                 # Save intermediate results

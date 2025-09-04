@@ -82,6 +82,7 @@ class BaseSynthesizer:
     self.column_info = {}
     self.encoded_data = None
     self.feature_names = []
+    self.original_columns = None
   
   def train(
         self,
@@ -181,6 +182,8 @@ class BaseSynthesizer:
     df = df.copy()
     encoded_df = pd.DataFrame()
     data_info = {'transform_info': {}, 'encoded_width': 0, 'original_size': len(df)}
+    # Preserve original column order for decoding
+    self.original_columns = df.columns.tolist()
     
     # Identify column types
     numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -244,8 +247,11 @@ class BaseSynthesizer:
     encoded_df = pd.DataFrame(samples, columns=self.feature_names)
     decoded_df = pd.DataFrame()
     
-    # Reverse the encoding process
-    for original_col, encoder_info in self.encoders.items():
+    # Reverse the encoding process following original column order
+    for original_col in (self.original_columns or list(self.encoders.keys())):
+        encoder_info = self.encoders.get(original_col)
+        if encoder_info is None:
+            continue
         if encoder_info['type'] == 'minmax':
             # Find the scaled column
             scaled_col = f'{original_col}_scaled'

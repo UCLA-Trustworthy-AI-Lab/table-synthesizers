@@ -24,12 +24,15 @@ example/workspace
 example/benchmark_results/*
 example/comprehensive_results*/*
 example/sandbox*/*
+example/autodiff*/*
 example/sandboxcopy/*
 example/sandboxcopy/analyze_preprocessed_data.py
 example/sandboxcopy/preprocess_amazon_data.py
 *nohup.out
 example/command
 example/run_comprehensive_benchmark.sh
+
+AGENTS.md
 
 src/stg/TabSyn/data/*
 src/stg/TabSyn/data/test_tabsyn_df/*

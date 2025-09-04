@@ -72,13 +72,17 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Step 1: Train the VAE model
             vae_start = time.time()
             print("[TabSyn][train] Starting VAE training subprocess...", flush=True)
+            env = os.environ.copy()
+            # Fix MKL threading conflict reported by mkl-service
+            env["MKL_SERVICE_FORCE_INTEL"] = "1"
+            env.setdefault("OMP_NUM_THREADS", "1")
             subprocess.run([
                 "python", os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "vae",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], cwd=tabsyn_dir, check=True)
+            ], cwd=tabsyn_dir, check=True, env=env)
             print(f"[TabSyn][train] VAE training finished in {time.time()-vae_start:.2f}s", flush=True)
             
             # Step 2: Train the diffusion model
@@ -90,7 +94,7 @@ class TabSynSynthesizer(BaseSynthesizer):
                 "--method", "tabsyn",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], cwd=tabsyn_dir, check=True)
+            ], cwd=tabsyn_dir, check=True, env=env)
             print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             
             self.trained = True
@@ -133,13 +137,16 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Generate synthetic data
             subp_start = time.time()
             print("[TabSyn][sample] Starting sampling subprocess...", flush=True)
+            env = os.environ.copy()
+            env["MKL_SERVICE_FORCE_INTEL"] = "1"
+            env.setdefault("OMP_NUM_THREADS", "1")
             subprocess.run([
                 "python", os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "sample",
                 "--save_path", save_path
-            ], cwd=tabsyn_dir, check=True)
+            ], cwd=tabsyn_dir, check=True, env=env)
             print(f"[TabSyn][sample] Sampling subprocess finished in {time.time()-subp_start:.2f}s", flush=True)
             
             # Load synthetic data

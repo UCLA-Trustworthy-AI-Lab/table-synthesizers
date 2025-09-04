@@ -1,7 +1,17 @@
 from .base import BaseSynthesizer
 from .identity import Identity
-from .CTGAN import CTGAN
-from .TabDDPM import TabDDPM
+try:
+    from .CTGAN import CTGAN
+    CTGAN_AVAILABLE = True
+except ImportError:
+    CTGAN_AVAILABLE = False
+    print("Warning: CTGAN not available due to missing dependencies")
+try:
+    from .TabDDPM import TabDDPM
+    TABDDPM_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    TABDDPM_AVAILABLE = False
+    print(f"Warning: TabDDPM not available due to dependencies: {str(e)}")
 from .PATECTGAN import PATECTGAN
 try:
     from .AIM import AIM
@@ -68,12 +78,16 @@ import numpy as np
 import torch
 
 DEFAULT_MODELS = {"Identity":Identity,
-                  #"CTGAN":CTGAN,
-                  "TabDDPM":TabDDPM,
                   "PATECTGAN":PATECTGAN,
                   "TVAE":TVAE,
                   "CART":CARTSynthesizer,
                   "DPCART":DPCARTSynthesizer}
+
+if TABDDPM_AVAILABLE:
+    DEFAULT_MODELS["TabDDPM"] = TabDDPM
+
+if CTGAN_AVAILABLE:
+    DEFAULT_MODELS["CTGAN"] = CTGAN
 
 if AIM_AVAILABLE:
     DEFAULT_MODELS["AIM"] = AIM
