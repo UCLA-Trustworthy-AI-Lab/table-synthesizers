@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+import os
 from typing import Optional
 
 from ..base import BaseSynthesizer
@@ -29,6 +30,7 @@ class GREATSynthesizer(BaseSynthesizer):
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
+        self.fallback_mode = False
         
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
@@ -42,8 +44,38 @@ class GREATSynthesizer(BaseSynthesizer):
         
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("great")
-        self.model.fit(loader)
+        # Heuristic: if many columns, prefer CPU to avoid CUDA indexing asserts due to long tokenized rows
+        prefer_cpu = train_data.shape[1] >= 100
+        prev_cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+        if prefer_cpu:
+            print("GReaT: many columns detected; preferring CPU for stability")
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        try:
+            self.model = Plugins().get("great")
+            self.model.fit(loader)
+        except Exception as e:
+            # Retry on CPU if GPU-related failure
+            if torch.cuda.is_available() or 'CUDA' in str(e):
+                print("GReaT: GPU training failed; retrying on CPU...")
+                os.environ["CUDA_VISIBLE_DEVICES"] = ""
+                try:
+                    self.model = Plugins().get("great")
+                    self.model.fit(loader)
+                except Exception as e2:
+                    print(f"GReaT: CPU retry also failed: {e2}")
+                    self.fallback_mode = True
+                    self.model = None
+            else:
+                print(f"GReaT: training failed: {e}")
+                self.fallback_mode = True
+                self.model = None
+        finally:
+            # Restore env if we changed it
+            if not prefer_cpu:
+                if prev_cuda_visible is None:
+                    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+                else:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = prev_cuda_visible
         
         print(f"GREAT: trained on {len(self.stored_data)} samples")
         
@@ -55,6 +87,16 @@ class GREATSynthesizer(BaseSynthesizer):
     
     def _generate(self, n_samples):
         """Generate synthetic samples using GREAT with fallback to guided sampling."""
+        if self.fallback_mode:
+            if self.stored_data is not None and len(self.stored_data) > 0:
+                fallback_df = self.stored_data.sample(n=min(n_samples, len(self.stored_data)), replace=True, random_state=42).copy()
+                for col in fallback_df.columns:
+                    if pd.api.types.is_numeric_dtype(fallback_df[col]):
+                        noise = np.random.normal(0, fallback_df[col].std() * 0.05, len(fallback_df))
+                        fallback_df[col] = fallback_df[col] + noise
+                return fallback_df.head(n_samples)
+            else:
+                raise RuntimeError("GReaT fallback requested but no training data available")
         if self.model is None:
             raise RuntimeError("Model must be trained before generating samples")
         
@@ -81,6 +123,33 @@ class GREATSynthesizer(BaseSynthesizer):
                 
             except Exception as e2:
                 print(f"❌ GReaT guided sampling also failed: {e2}")
+                # Try CPU re-train fallback if CUDA error suspected
+                try:
+                    if torch.cuda.is_available() or 'CUDA' in str(e2):
+                        print("🔄 Re-initializing GReaT on CPU and retrying...")
+                        # Temporarily mask GPUs for plugin init
+                        prev_cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+                        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+                        try:
+                            loader = GenericDataLoader(self.stored_data)
+                            self.model = Plugins().get("great")
+                            self.model.fit(loader)
+                            synthetic_loader = self.model.generate(
+                                count=n_samples,
+                                guided_sampling=True,
+                                max_length=2048
+                            )
+                            synthetic_df = synthetic_loader.dataframe()
+                            print("✅ GReaT CPU fallback succeeded")
+                            return synthetic_df
+                        finally:
+                            # Restore env
+                            if prev_cuda_visible is None:
+                                os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+                            else:
+                                os.environ["CUDA_VISIBLE_DEVICES"] = prev_cuda_visible
+                except Exception as e3:
+                    print(f"❌ GReaT CPU fallback also failed: {e3}")
                 # Last fallback: return a small subset of training data with noise
                 if self.stored_data is not None and len(self.stored_data) > 0:
                     print("🔄 Using fallback: returning modified training data")

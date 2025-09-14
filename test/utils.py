@@ -268,6 +268,49 @@ def get_realistic_test_config(dataset_name, model_name):
     return config
 
 
+def _assert_meaningful_quality(real_df, synth_df, model_name, dataset_name):
+    """Lightweight sanity checks that synthetic data is meaningful.
+
+    - No NaNs introduced
+    - Numeric columns preserve non-zero variance and rough scale
+    - Categorical columns keep the same category set and reasonable coverage
+    """
+    import numpy as np
+
+    # No NaNs
+    assert not synth_df.isna().any().any(), "Synthetic dataframe contains NaNs"
+    n_rows = len(synth_df)
+
+    # Numeric sanity: non-degenerate variance
+    num_cols = real_df.select_dtypes(include=[np.number]).columns.tolist()
+    relevant = 0
+    varied = 0
+    for col in num_cols:
+        r_std = float(real_df[col].std(ddof=0))
+        s_std = float(synth_df[col].std(ddof=0))
+        if r_std >= 1e-8:
+            relevant += 1
+            if s_std > 0.0:
+                varied += 1
+    if relevant > 0:
+        min_varied = max(1, int(0.05 * relevant))
+        assert varied >= min_varied, (
+            f"[{model_name}:{dataset_name}] Too many numeric columns collapsed: {varied}/{relevant} varied"
+        )
+
+    # Categorical sanity: valid categories and non-degenerate diversity
+    cat_cols = real_df.select_dtypes(exclude=[np.number]).columns.tolist()
+    for col in cat_cols:
+        real_vals = set(real_df[col].astype(str).unique())
+        synth_vals = set(synth_df[col].astype(str).unique())
+        assert synth_vals.issubset(real_vals), (
+            f"[{model_name}:{dataset_name}] Column '{col}' has unseen categories: {synth_vals - real_vals}"
+        )
+        # Require some diversity when real has >1 category
+        if len(real_vals) > 1 and n_rows >= 50:
+            assert len(synth_vals) >= 2, f"[{model_name}:{dataset_name}] Column '{col}' lacks category diversity"
+
+
 def run_sandbox_dataset_test(model_name, dataset_name, config=None, n_samples=50, sample_ratio=0.1):
     """
     Test a synthesizer model on a specific sandbox dataset
@@ -305,6 +348,11 @@ def run_sandbox_dataset_test(model_name, dataset_name, config=None, n_samples=50
     if config is None:
         config = get_realistic_test_config(dataset_name, model_name)
     
+    # Ensure Identity uses bootstrap so n_samples is respected
+    if model_name == 'Identity':
+        config = dict(config)
+        config['bootstrap'] = True
+    
     print(f"Testing {model_name} on {dataset_name} with config: {config}")
     
     # Initialize synthesizer
@@ -333,6 +381,9 @@ def run_sandbox_dataset_test(model_name, dataset_name, config=None, n_samples=50
         expected_cols = set(df.columns)
         actual_cols = set(sampled_df.columns)
         assert expected_cols == actual_cols, f"Column names mismatch. Expected: {expected_cols}, Got: {actual_cols}"
+        
+        # Basic distribution sanity checks (fast, model-agnostic)
+        _assert_meaningful_quality(df, sampled_df, model_name, dataset_name)
         
         print(f"✅ {model_name} test on {dataset_name} passed successfully!")
         return True
@@ -389,4 +440,3 @@ def test_dataframe_support(model_name, config=None, n_samples=10):
     
     print(f"{model_name} DataFrame test passed successfully!")
     return True
-

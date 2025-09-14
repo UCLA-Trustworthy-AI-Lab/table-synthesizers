@@ -32,6 +32,9 @@ example/sandboxcopy/preprocess_amazon_data.py
 example/command
 example/run_comprehensive_benchmark.sh
 
+*.json
+*.csv
+
 AGENTS.md
 
 src/stg/TabSyn/data/*

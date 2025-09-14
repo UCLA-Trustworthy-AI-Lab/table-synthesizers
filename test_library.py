@@ -8,6 +8,9 @@ after pip installation, without access to internal test utilities.
 import pandas as pd
 import numpy as np
 import torch
+import sys, os
+# Ensure local src/ is importable for test execution without installation
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 from stg import TableSynthesizer
 
 def test_basic_import():

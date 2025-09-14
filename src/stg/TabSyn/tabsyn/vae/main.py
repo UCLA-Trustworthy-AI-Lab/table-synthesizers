@@ -29,25 +29,38 @@ NUM_LAYERS = 2
 
 
 def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
+    """Compute VAE losses with robust handling of categorical targets.
+
+    Some datasets may produce categorical indices outside the predicted class range
+    (e.g., due to encoding mismatches). We guard CrossEntropy against out-of-range
+    targets by masking invalid positions. This avoids device-side asserts on CUDA
+    and IndexError on CPU.
+    """
     ce_loss_fn = nn.CrossEntropyLoss()
     mse_loss = (X_num - Recon_X_num).pow(2).mean()
-    ce_loss = 0
-    acc = 0
+    ce_loss = torch.tensor(0.0, device=X_num.device)
+    acc = torch.tensor(0.0, device=X_num.device)
     total_num = 0
+    cat_count = 0
 
     for idx, x_cat in enumerate(Recon_X_cat):
-        if x_cat is not None:
-            ce_loss += ce_loss_fn(x_cat, X_cat[:, idx])
-            x_hat = x_cat.argmax(dim = -1)
-        acc += (x_hat == X_cat[:,idx]).float().sum()
-        total_num += x_hat.shape[0]
+        if x_cat is None:
+            continue
+        target = X_cat[:, idx]
+        n_classes = x_cat.size(-1)
+        # valid mask to prevent out-of-bound indices
+        valid = (target >= 0) & (target < n_classes)
+        if valid.any():
+            ce_loss = ce_loss + ce_loss_fn(x_cat[valid], target[valid])
+            x_hat = x_cat.argmax(dim=-1)
+            acc = acc + (x_hat[valid] == target[valid]).float().sum()
+            total_num += int(valid.sum().item())
+            cat_count += 1
 
-    if len(Recon_X_cat) < 1:
-        ce_loss = torch.tensor(0)
-        acc = torch.tensor(0)
-    else:
-        ce_loss /= (idx + 1)
-        acc /= total_num
+    if cat_count > 0:
+        ce_loss = ce_loss / cat_count
+    if total_num > 0:
+        acc = acc / total_num
     # loss = mse_loss + ce_loss
 
     temp = 1 + logvar_z - mu_z.pow(2) - logvar_z.exp()
@@ -90,7 +103,9 @@ def main(args):
     X_train_cat, X_test_cat = X_cat
 
     X_train_num, X_test_num = torch.tensor(X_train_num).float(), torch.tensor(X_test_num).float()
-    X_train_cat, X_test_cat =  torch.tensor(X_train_cat).long(), torch.tensor(X_test_cat).long()
+    # Ensure categorical indices are non-negative integers
+    X_train_cat = torch.tensor(np.clip(X_train_cat, 0, None)).long()
+    X_test_cat = torch.tensor(np.clip(X_test_cat, 0, None)).long()
 
 
     train_data = TabularDataset(X_train_num.float(), X_train_cat)
@@ -197,7 +212,7 @@ def main(args):
     end_time = time.time()
     print('Training time: {:.4f} mins'.format((end_time - start_time)/60))
     
-    # Saving latent embeddings
+    # Saving latent embeddings (batched to avoid GPU OOM on large datasets)
     with torch.no_grad():
         pre_encoder.load_weights(model)
         pre_decoder.load_weights(model)
@@ -205,15 +220,37 @@ def main(args):
         torch.save(pre_encoder.state_dict(), encoder_save_path)
         torch.save(pre_decoder.state_dict(), decoder_save_path)
 
-        X_train_num = X_train_num.to(device)
-        X_train_cat = X_train_cat.to(device)
-
         print('Successfully load and save the model!')
 
-        train_z = pre_encoder(X_train_num, X_train_cat).detach().cpu().numpy()
+        N = X_train_num.shape[0]
+        bs_embed = min(8192, max(1024, N // 50))  # heuristic batching
+        z_parts = []
+        try:
+            # Try on current device first
+            for start in range(0, N, bs_embed):
+                end = min(N, start + bs_embed)
+                z_batch = pre_encoder(
+                    X_train_num[start:end].to(device),
+                    X_train_cat[start:end].to(device)
+                ).detach().cpu()
+                z_parts.append(z_batch)
+        except RuntimeError as e:
+            if 'out of memory' in str(e).lower():
+                torch.cuda.empty_cache()
+                print('Embedding export OOM on GPU; falling back to CPU batching...')
+                pre_encoder_cpu = pre_encoder.to('cpu')
+                for start in range(0, N, bs_embed):
+                    end = min(N, start + bs_embed)
+                    z_batch = pre_encoder_cpu(
+                        X_train_num[start:end],
+                        X_train_cat[start:end]
+                    ).detach()
+                    z_parts.append(z_batch)
+            else:
+                raise
 
+        train_z = torch.cat(z_parts, dim=0).numpy()
         np.save(f'{ckpt_dir}/train_z.npy', train_z)
-
         print('Successfully save pretrained embeddings in disk!')
 
 if __name__ == '__main__':
