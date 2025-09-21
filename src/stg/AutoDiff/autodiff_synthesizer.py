@@ -67,6 +67,8 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
+        # Set seed across libraries if provided
+        self.set_seed(self._seed)
         
         self.stored_data = train_data.copy()
         
@@ -93,7 +95,8 @@ class AutoDiffSynthesizer(BaseSynthesizer):
             weight_decay, 
             self.n_epochs, 
             self.batch_size, 
-            self.threshold
+            self.threshold,
+            device=self._device
         )
         latent_features = self.ds[1].detach()
         
@@ -110,7 +113,8 @@ class AutoDiffSynthesizer(BaseSynthesizer):
             maximum_learning_rate, 
             weight_decay, 
             self.diff_n_epochs, 
-            self.batch_size
+            self.batch_size,
+            device=self._device
         )
         
         print("AutoDiff training completed!")
@@ -136,11 +140,20 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         start_time = time.time()
         sample = diff.Euler_Maruyama_sampling(self.score, T_sampling, n_samples, P, device)
+        # Move to model device for decoding
+        sample = sample.to(self._device)
         end_time = time.time()
         
         # Convert generated samples back to the original table format
         print("Sample shape:", sample.shape)
         gen_output = self.ds[0](sample, self.ds[2], self.ds[3])
+        # Ensure CPU tensors for downstream numpy conversion
+        if 'nums' in gen_output:
+            gen_output['nums'] = gen_output['nums'].detach().cpu()
+        if 'cats' in gen_output:
+            gen_output['cats'] = [x.detach().cpu() for x in gen_output['cats']]
+        if 'bins' in gen_output:
+            gen_output['bins'] = gen_output['bins'].detach().cpu()
         syn_df = pce.convert_to_table(self.stored_data, gen_output, self.threshold)
         
         print(f"Sampling duration: {end_time - start_time} seconds")

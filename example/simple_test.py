@@ -1,6 +1,7 @@
 import os
 import sys
 import pandas as pd
+import torch
 
 
 def main() -> None:
@@ -17,14 +18,20 @@ def main() -> None:
 
     # Select one synthesizer to run. Recommended stable choices for DataFrame input: 'TVAE', 'TabDDPM'.
     # Known caveat: 'CTGAN' and 'PATECTGAN' may have DataFrame issues per README; prefer legacy DataLoader for them.
-    MODEL_NAME = "TVAE"  # Change to 'TabDDPM', 'Identity', etc.
+    MODEL_NAME = "AutoDiff"  # e.g., 'TVAE', 'CTGAN', 'AutoDiff', 'Identity'
 
     # Minimal model config. Adjust per model; values here are safe defaults for a sanity check.
     # To adapt: add/remove keys according to each model's parameters (see README/tests).
     MODEL_CONFIG = {
-        "epochs": 5,       # keep tiny for a quick run; increase for quality
-        "batch_size": 64,  # fit() can also override this via its own batch_size arg
+        "epochs": 5,        # keep tiny for a quick run; increase for quality
+        "diff_n_epochs": 5,
+        "batch_size": 64,   # fit() can also override this via its own batch_size arg
     }
+
+    # If GPU is available, nudge models that accept a 'cuda' flag
+    cuda_available = torch.cuda.is_available()
+    if MODEL_NAME in ("TVAE", "PATECTGAN"):
+        MODEL_CONFIG["cuda"] = bool(cuda_available)
 
     # How many rows to generate; set return_dataframe=True to get a decoded pandas.DataFrame
     N_SAMPLES = 10
@@ -36,10 +43,31 @@ def main() -> None:
     # 2) Create synthesizer
     synthesizer = TableSynthesizer(MODEL_NAME, MODEL_CONFIG)
     print(f"Initialized synthesizer: {MODEL_NAME}")
+    # Print CUDA/GPU status and intended device
+    print(f"CUDA available: {cuda_available}")
+    try:
+        print(f"torch.__version__={torch.__version__}, torch.version.cuda={getattr(torch.version,'cuda',None)}")
+        print(f"CUDA device_count={torch.cuda.device_count()}, CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}\n")
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                print(f"GPU[{i}]: {torch.cuda.get_device_name(i)}")
+    except Exception:
+        pass
+    try:
+        init_dev = getattr(synthesizer.model, "_device", getattr(synthesizer.model, "device", None))
+        if init_dev is not None:
+            print(f"Selected device (pre-train): {init_dev}")
+    except Exception:
+        pass
 
     # 3) Fit model on DataFrame (automatic encoding handled internally)
     synthesizer.fit(df)
-    print("Training complete")
+    # Confirm runtime device
+    try:
+        run_dev = getattr(synthesizer.model, "_device", getattr(synthesizer.model, "device", None))
+        print(f"Training complete on device: {run_dev}")
+    except Exception:
+        print("Training complete")
 
     # 4) Sample synthetic data
     synth_df = synthesizer.sample(n=N_SAMPLES, return_dataframe=True)
@@ -58,5 +86,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

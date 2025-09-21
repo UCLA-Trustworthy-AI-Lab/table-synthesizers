@@ -8,8 +8,8 @@ import warnings
 import time
 
 from tqdm import tqdm
-from tabsyn.model import MLPDiffusion, Model
-from tabsyn.latent_utils import get_input_train
+from .model import MLPDiffusion, Model
+from .latent_utils import get_input_train
 
 warnings.filterwarnings('ignore')
 

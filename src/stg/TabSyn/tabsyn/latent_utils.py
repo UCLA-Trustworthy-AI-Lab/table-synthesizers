@@ -3,14 +3,15 @@ import json
 import numpy as np
 import pandas as pd
 import torch
-from utils_train import preprocess
-from tabsyn.vae.model import Decoder_model 
+from ..utils_train import preprocess
+from .vae.model import Decoder_model 
 
 def get_input_train(args):
     dataname = args.dataname
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    dataset_dir = f'data/{dataname}'
+    base_dir = os.path.abspath(os.path.join(curr_dir, '..'))
+    dataset_dir = os.path.join(base_dir, 'data', dataname)
 
     with open(f'{dataset_dir}/info.json', 'r') as f:
         info = json.load(f)
@@ -32,10 +33,11 @@ def get_input_generate(args):
     dataname = args.dataname
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    dataset_dir = f'data/{dataname}'
+    base_dir = os.path.abspath(os.path.join(curr_dir, '..'))
+    dataset_dir = os.path.join(base_dir, 'data', dataname)
     ckpt_dir = f'{curr_dir}/ckpt/{dataname}'
 
-    with open(f'{dataset_dir}/info.json', 'r') as f:
+    with open(os.path.join(dataset_dir, 'info.json'), 'r') as f:
         info = json.load(f)
 
     task_type = info['task_type']
@@ -156,4 +158,3 @@ def process_invalid_id(syn_cat, min_cat, max_cat):
     syn_cat = np.clip(syn_cat, min_cat, max_cat)
 
     return syn_cat
-

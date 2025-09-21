@@ -3,6 +3,7 @@ import threading
 import pandas as pd
 import numpy as np
 import logging
+import random
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, LabelEncoder
 
@@ -64,7 +65,7 @@ class BaseSynthesizer:
     update_frontend()
         Calculates and sends important training progress information to the client.
   """
-  def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, **kwargs):
+  def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, seed: int = None, **kwargs):
     """
       Init important parameters for the model. You can enter parameters from the configuration json file. Parameters with no specification provided will use default values.
     """
@@ -77,6 +78,8 @@ class BaseSynthesizer:
     self.timer =None
     self.messageSender = messageSender
     self.data_info = data_info
+    # Reproducibility
+    self._seed = seed
     
     # Encoding components
     self.encoders = {}
@@ -101,6 +104,8 @@ class BaseSynthesizer:
             No return value.
     """
     self.start_threading()
+    # Set seed deterministically if provided
+    self.set_seed(self._seed)
     self.set_device()
 
     # Handle different input types
@@ -140,6 +145,25 @@ class BaseSynthesizer:
             self.device = device
         # Keep alias for compatibility
         self._device = self.device
+        
+  def set_seed(self, seed: int = None):
+        """Set random seeds for reproducibility across torch, numpy, and python's random."""
+        if seed is None:
+            return
+        try:
+            random.seed(seed)
+        except Exception:
+            pass
+        try:
+            np.random.seed(seed)
+        except Exception:
+            pass
+        try:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+        except Exception:
+            pass
         
   def init_model(self, train_data):
     """Initialize attributes of the synthesizer"""

@@ -48,6 +48,8 @@ class TabSynSynthesizer(BaseSynthesizer):
         
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
+        # Honor global seed if provided
+        self.set_seed(self._seed)
         
         self.stored_data = train_data.copy()
         
@@ -61,15 +63,10 @@ class TabSynSynthesizer(BaseSynthesizer):
             self.stop_threading()
             return
         
-        # Save current directory
-        original_dir = os.getcwd()
-        
         try:
             start_total = time.time()
-            # Change to TabSyn directory 
-            tabsyn_dir = os.path.join(os.path.dirname(__file__))
-            os.chdir(tabsyn_dir)
-            print(f"[TabSyn][train] cwd={os.getcwd()}, dataset={self.dataset_name}", flush=True)
+            tabsyn_dir = os.path.abspath(os.path.dirname(__file__))
+            print(f"[TabSyn][train] base_dir={tabsyn_dir}, dataset={self.dataset_name}", flush=True)
             
             # Prepare the dataset
             prep_start = time.time()
@@ -80,14 +77,7 @@ class TabSynSynthesizer(BaseSynthesizer):
             process_data(self.dataset_name)
             print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
             
-            # Ensure import paths for in-process execution
-            import sys as _sys
-            # Add TabSyn package dir and project src to path to stabilize imports
-            tabsyn_parent_src = os.path.abspath(os.path.join(tabsyn_dir, os.pardir, os.pardir))
-            if tabsyn_dir not in _sys.path:
-                _sys.path.insert(0, tabsyn_dir)
-            if tabsyn_parent_src not in _sys.path:
-                _sys.path.insert(0, tabsyn_parent_src)
+            # No sys.path or chdir needed; imports are package-relative and paths are contained
 
             # Step 1: Train the VAE model (in-process)
             vae_start = time.time()
@@ -131,8 +121,7 @@ class TabSynSynthesizer(BaseSynthesizer):
             raise RuntimeError(f"TabSyn training failed: {e}")
         
         finally:
-            # Return to original directory
-            os.chdir(original_dir)
+            pass
         
         self.stop_threading()
     
@@ -149,7 +138,8 @@ class TabSynSynthesizer(BaseSynthesizer):
         if self.epochs <= 1:
             if self.stored_data is None or len(self.stored_data) == 0:
                 raise RuntimeError("No stored data available for fast sampling path")
-            synthetic_df = self.stored_data.sample(n=n_samples, replace=True, random_state=42).reset_index(drop=True)
+            rs = self._seed if getattr(self, "_seed", None) is not None else 42
+            synthetic_df = self.stored_data.sample(n=n_samples, replace=True, random_state=rs).reset_index(drop=True)
             return synthetic_df
 
         # Save current directory
@@ -161,19 +151,11 @@ class TabSynSynthesizer(BaseSynthesizer):
         temp_file.close()
         
         try:
-            # Change to TabSyn directory
-            tabsyn_dir = os.path.join(os.path.dirname(__file__))
-            os.chdir(tabsyn_dir)
+            tabsyn_dir = os.path.abspath(os.path.dirname(__file__))
             start_sampling_total = time.time()
-            print(f"[TabSyn][sample] cwd={os.getcwd()}, dataset={self.dataset_name}, save_path={save_path}", flush=True)
+            print(f"[TabSyn][sample] base_dir={tabsyn_dir}, dataset={self.dataset_name}, save_path={save_path}", flush=True)
             
-            # Ensure import paths for in-process execution
-            import sys as _sys
-            tabsyn_parent_src = os.path.abspath(os.path.join(tabsyn_dir, os.pardir, os.pardir))
-            if tabsyn_dir not in _sys.path:
-                _sys.path.insert(0, tabsyn_dir)
-            if tabsyn_parent_src not in _sys.path:
-                _sys.path.insert(0, tabsyn_parent_src)
+            # No sys.path or chdir needed; imports are package-relative and paths are contained
 
             # Generate synthetic data (in-process)
             subp_start = time.time()
@@ -218,8 +200,6 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Clean up temporary file
             if os.path.exists(save_path):
                 os.remove(save_path)
-            # Return to original directory
-            os.chdir(original_dir)
             print(f"[TabSyn][sample] Total sampling time {time.time()-start_sampling_total:.2f}s", flush=True)
         
         return synthetic_df

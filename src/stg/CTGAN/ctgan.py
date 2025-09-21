@@ -165,7 +165,10 @@ class CTGAN(BaseSynthesizer):
                     real_cat, fake_cat, self._device, self.pac)
                 loss_d = -(torch.mean(y_real) - torch.mean(y_fake))
                 if torch.isnan(loss_d) or torch.isinf(loss_d):
-                    print(-torch.mean(y_real), -torch.mean(y_fake), -torch.mean(fake_cat),-torch.mean(fake), -torch.mean(fakez))
+                    self._logger.error(
+                        "Invalid loss_d: y_real=%s y_fake=%s fake_cat=%s fake=%s fakez=%s",
+                        -torch.mean(y_real), -torch.mean(y_fake), -torch.mean(fake_cat), -torch.mean(fake), -torch.mean(fakez)
+                    )
                     raise ValueError("Invalid loss_d!!!")
 
                 self.optimizerD.zero_grad()
@@ -200,7 +203,10 @@ class CTGAN(BaseSynthesizer):
 
             loss_g = -torch.mean(y_fake) + cross_entropy
             if torch.isnan(loss_g) or torch.isinf(loss_g):
-                print(-torch.mean(y_fake), torch.isnan(y_fake).any(), torch.isnan(fakeact).any(), torch.isnan(fake).any(), torch.isnan(fakez).any(), cross_entropy)
+                self._logger.error(
+                    "Invalid loss_g: y_fake=%s isnan(y_fake)=%s isnan(fakeact)=%s isnan(fake)=%s isnan(fakez)=%s cross_entropy=%s",
+                    -torch.mean(y_fake), torch.isnan(y_fake).any(), torch.isnan(fakeact).any(), torch.isnan(fake).any(), torch.isnan(fakez).any(), cross_entropy
+                )
                 raise ValueError("Invalid loss_g!!!")
 
             self.optimizerG.zero_grad()
@@ -398,7 +404,7 @@ class CTGAN(BaseSynthesizer):
         if torch.isnan(logits).any():
             raise ValueError("gumbel_softmax logits input has NaN!!!!")
         if version.parse(torch.__version__) < version.parse("1.2.0"):
-            print("Running other version!")
+            logging.getLogger(__name__).debug("CTGAN: using compatibility gumbel_softmax path")
             for i in range(10):
                 transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard,
                                                         eps=eps, dim=dim)
@@ -408,8 +414,11 @@ class CTGAN(BaseSynthesizer):
 
         transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard, eps=eps, dim=dim)
         if torch.isnan(transformed).any():
-            warnings.warn(f"Nan found in gumbel_softmax! Standardizing logits.")
-            print(torch.min(logits), torch.mean(logits), torch.max(logits), tau, hard, eps, dim)
+            warnings.warn("Nan found in gumbel_softmax! Standardizing logits.")
+            logging.getLogger(__name__).debug(
+                "gumbel_softmax NaN with logits stats: min=%s mean=%s max=%s tau=%s hard=%s eps=%s dim=%s",
+                torch.min(logits), torch.mean(logits), torch.max(logits), tau, hard, eps, dim
+            )
             standardized_logits = (logits - torch.min(logits)) / (torch.max(logits) - torch.min(logits))
             transformed = functional.gumbel_softmax(standardized_logits, tau=tau, hard=hard, eps=eps, dim=dim)
         if torch.isnan(transformed).any():
@@ -433,7 +442,7 @@ class CTGAN(BaseSynthesizer):
                     st_idx = ed-transformer.output_width
                     for transformer in self._transformer.transformers:
                         stt += transformer.output_width
-                        print(stt)
+                        logging.getLogger(__name__).debug("CTGAN activation position: %s", stt)
                     raise ValueError(f"Nan in transformed numerical {st_idx}")
             elif transformer.is_categorical:
                 ed = st + transformer.output_width

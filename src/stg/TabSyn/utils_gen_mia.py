@@ -43,11 +43,12 @@ def create_dataset_with_metadata(np_array, dataset_name, task_type="binclass"):
     cat_col_idx = [df_typed.columns.get_loc(col) for col in cat_cols if col != target_col] 
     
     # Step 3: Create the directory structure
-    data_dir = f"./data/{dataset_name}"
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    data_dir = os.path.join(base_dir, "data", dataset_name)
     os.makedirs(data_dir, exist_ok=True)
     
     # Step 4: Save the properly typed DataFrame as a CSV file
-    csv_path = f"{data_dir}/{dataset_name}.csv"
+    csv_path = os.path.join(data_dir, f"{dataset_name}.csv")
     df_typed.to_csv(csv_path, index=False, header=True)
     
     # Step 5: Create metadata dictionary
@@ -65,9 +66,9 @@ def create_dataset_with_metadata(np_array, dataset_name, task_type="binclass"):
     }
     
     # Step 6: Save metadata as a JSON file
-    info_dir = f"./data/Info"
+    info_dir = os.path.join(base_dir, "data", "Info")
     os.makedirs(info_dir, exist_ok=True)
-    json_path = f"{info_dir}/{dataset_name}.json"
+    json_path = os.path.join(info_dir, f"{dataset_name}.json")
     with open(json_path, 'w') as f:
         json.dump(metadata, f, indent=4)
 

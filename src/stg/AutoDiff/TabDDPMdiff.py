@@ -2,7 +2,7 @@ import functools
 import torch
 import torch.nn as nn
 import numpy as np
-import tqdm.notebook
+from tqdm import trange
 import random
 import math
 import torch.nn as nn
@@ -14,9 +14,12 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'  #@param ['cuda', 'cpu'] {'type':'string'}
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
+def _as_t_on(x_or_device, t):
+    if isinstance(x_or_device, torch.Tensor):
+        dev = x_or_device.device
+    else:
+        dev = x_or_device
+    return torch.as_tensor(t, device=dev, dtype=torch.float32)
 
 ###########################################################################################################################################
 ModuleType = Union[str, Callable[..., nn.Module]]
@@ -254,27 +257,26 @@ class MLP(nn.Module):
 
 # f(x,t)
 def drift_coeff(x, t, beta_1, beta_0):
-   t = torch.tensor(t)
+   t = _as_t_on(x, t)
    beta_t = beta_0 + t * (beta_1 - beta_0)
    drift = -0.5 * beta_t * x
    return drift
 
 # g(t)
 def diffusion_coeff(t, beta_1, beta_0):
-    t = torch.tensor(t)
+    t = torch.as_tensor(t, device=t.device if isinstance(t, torch.Tensor) else None, dtype=torch.float32)
     beta_t = beta_0 + t * (beta_1 - beta_0)
     diffusion = torch.sqrt(beta_t)
     return diffusion
 
 def marginal_prob_mean(x, t, beta_1, beta_0):
-  #x = x.to(device)
-  t = torch.tensor(t)
+  t = _as_t_on(x, t)
   log_mean_coeff = -0.25 * t ** 2 * (beta_1 - beta_0) - 0.5 * t * beta_0
   mean = torch.exp(log_mean_coeff)[:, None] * x
   return mean
 
 def marginal_prob_std(t, beta_1, beta_0):
-  t = torch.tensor(t)
+  t = torch.as_tensor(t, device=t.device if isinstance(t, torch.Tensor) else None, dtype=torch.float32)
   log_mean_coeff = -0.25 * t ** 2 * (beta_1 - beta_0) - 0.5 * t * beta_0
   std = 1 - torch.exp(2. * log_mean_coeff)
   return torch.sqrt(std)
@@ -306,20 +308,20 @@ def compute_v(ll, alpha, beta):
     return v
 
 
-def loss_fn(model, Input_Data, T, eps=1e-5):
+def loss_fn(model, Input_Data, T, device, eps=1e-5):
     N, input_dim = Input_Data.shape  
     loss_values = torch.empty(N)
     
     for row in range(N):
-        random_t = torch.rand(T) * (1. - eps) + eps
+        random_t = torch.rand(T, device=device) * (1. - eps) + eps
         
         # Compute Perturbed data from SDE
-        mean = marginal_prob_mean_fn(Input_Data[row,:], random_t).to(device)
-        std = marginal_prob_std_fn(random_t).to(device)
-        z = torch.randn(T, input_dim).to(device)
+        mean = marginal_prob_mean_fn(Input_Data[row,:], random_t)
+        std = marginal_prob_std_fn(random_t)
+        z = torch.randn(T, input_dim, device=device)
         perturbed_data = mean + z * std[:, None]
         
-        score = model(perturbed_data, random_t).to(device)
+        score = model(perturbed_data, random_t)
         loss_row = torch.mean(torch.sum((score * std[:,None] + z)**2, dim=1))
         
         loss_values[row] = loss_row
@@ -350,7 +352,9 @@ class MLPDiffusion(nn.Module):
 
 
 def train_diffusion(latent_features, T, eps, sigma, lr, \
-                    num_batches_per_epoch, maximum_learning_rate, weight_decay, n_epochs, batch_size):
+                    num_batches_per_epoch, maximum_learning_rate, weight_decay, n_epochs, batch_size, device=None):
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     rtdl_params={
         'd_in': latent_features.shape[1],
@@ -359,9 +363,11 @@ def train_diffusion(latent_features, T, eps, sigma, lr, \
         'd_out': latent_features.shape[1],
     }
         
-    ScoreNet = MLPDiffusion(latent_features.shape[1], rtdl_params)
-    ScoreNet_Parallel = torch.nn.DataParallel(ScoreNet)
-    ScoreNet_Parallel = ScoreNet_Parallel.to(device)
+    ScoreNet = MLPDiffusion(latent_features.shape[1], rtdl_params).to(device)
+    if torch.cuda.is_available() and torch.cuda.device_count() > 1 and str(device).startswith('cuda'):
+        ScoreNet_Parallel = torch.nn.DataParallel(ScoreNet)
+    else:
+        ScoreNet_Parallel = ScoreNet
 
     optimizer = Adam(ScoreNet_Parallel.parameters(), lr=lr, weight_decay=weight_decay)
     lr_scheduler = OneCycleLR(
@@ -371,16 +377,14 @@ def train_diffusion(latent_features, T, eps, sigma, lr, \
         epochs=n_epochs,
     )
 
-    from tqdm import trange
-
     tqdm_epoch = trange(n_epochs, desc="Training Progress")    
     losses = []
     
     for epoch in tqdm_epoch:
       batch_idx = random.choices(range(latent_features.shape[0]), k=batch_size)  ## Choose random indices 
-      batch_X = latent_features[batch_idx,:]  
-      
-      loss_values = loss_fn(ScoreNet_Parallel, batch_X, T, eps)
+      batch_X = latent_features[batch_idx,:].to(device)
+
+      loss_values = loss_fn(ScoreNet_Parallel, batch_X, T, device, eps)
       loss = torch.mean(loss_values)
     
       optimizer.zero_grad()
@@ -403,7 +407,7 @@ def Euler_Maruyama_sampling(model, T, N, P, device):
     init_x = torch.randn(N, P)
     X = init_x.to(device)
     
-    tqdm_epoch = tqdm.notebook.trange(T)
+    tqdm_epoch = trange(T)
     
     with torch.no_grad():
         for epoch in tqdm_epoch:

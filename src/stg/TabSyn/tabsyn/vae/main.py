@@ -12,8 +12,8 @@ from tqdm import tqdm
 import json
 import time
 
-from tabsyn.vae.model import Model_VAE, Encoder_model, Decoder_model
-from utils_train import preprocess, TabularDataset
+from .model import Model_VAE, Encoder_model, Decoder_model
+from ...utils_train import preprocess, TabularDataset
 
 warnings.filterwarnings('ignore')
 
@@ -58,7 +58,8 @@ def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
 
 def main(args):
     dataname = args.dataname
-    data_dir = f'data/{dataname}'
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+    data_dir = os.path.join(base_dir, 'data', dataname)
 
     max_beta = args.max_beta
     min_beta = args.min_beta
@@ -67,7 +68,7 @@ def main(args):
     device =  args.device
 
 
-    info_path = f'data/{dataname}/info.json'
+    info_path = os.path.join(data_dir, 'info.json')
 
     with open(info_path, 'r') as f:
         info = json.load(f)

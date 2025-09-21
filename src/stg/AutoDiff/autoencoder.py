@@ -140,16 +140,18 @@ def softmax_with_max(predictions):
     
     return max_indices
 
-def train_autoencoder(df, hidden_size, num_layers, lr, weight_decay, n_epochs, batch_size, threshold):
+def train_autoencoder(df, hidden_size, num_layers, lr, weight_decay, n_epochs, batch_size, threshold, device=None):
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     parser = DataFrameParser().fit(df, threshold)
     data = parser.transform()
-    data = torch.tensor(data.astype('float32'))
+    data = torch.tensor(data.astype('float32'), device=device)
 
     datatype_info = parser.datatype_info()
     n_bins = datatype_info['n_bins']; n_cats = datatype_info['n_cats']
     n_nums = datatype_info['n_nums']; cards = datatype_info['cards']
 
-    DS = DeapStack(n_bins, n_cats, n_nums, cards, data.shape[1], hidden_size=128, bottleneck_size=data.shape[1], num_layers=3)
+    DS = DeapStack(n_bins, n_cats, n_nums, cards, data.shape[1], hidden_size=128, bottleneck_size=data.shape[1], num_layers=3).to(device)
 
     optimizer = Adam(DS.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -182,6 +184,6 @@ def train_autoencoder(df, hidden_size, num_layers, lr, weight_decay, n_epochs, b
     num_max_values, _ = torch.max(data[:,n_bins+n_cats:n_bins+n_cats+n_nums], dim=0)
 
     latent_features = DS.featurize(data)
-    output = DS.decoder(latent_features, num_min_values, num_max_values)
+    _ = DS.decoder(latent_features, num_min_values, num_max_values)
 
     return (DS.decoder, latent_features, num_min_values, num_max_values)
