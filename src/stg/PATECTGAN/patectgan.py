@@ -28,6 +28,7 @@ from ..CTGAN.data_sampler import DataSampler
 from .privacy_utils import weights_init, pate, moments_acc
 
 from ..base import BaseSynthesizer
+import logging
 
 
 class Discriminator(Module):
@@ -123,7 +124,7 @@ class TransformerInfo:
 class TableTransformerInfo:
     def __init__(self,transform_info) -> None:
         column_ranges_in_transformed = transform_info
-        print(column_ranges_in_transformed)
+        logging.getLogger(__name__).debug("PATECTGAN transform_info initialized")
         self.transformers = []
         self.output_width = 0
         for col_name, elements in column_ranges_in_transformed.items():
@@ -224,14 +225,12 @@ class PATECTGAN(BaseSynthesizer):
         else:
             self._transformer = None
 
-        if not cuda or not torch.cuda.is_available():
-            device = "cpu"
-        elif isinstance(cuda, str):
-            device = cuda
+        # Normalize device selection via BaseSynthesizer
+        if isinstance(cuda, str):
+            desired = torch.device(cuda)
         else:
-            device = "cuda"
-
-        self._device = torch.device(device)
+            desired = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
+        self.set_device(desired)
 
     def _train(
         self,

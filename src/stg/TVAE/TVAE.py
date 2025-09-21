@@ -1,3 +1,4 @@
+import logging
 """CLI."""
 import numpy as np
 import torch
@@ -141,11 +142,9 @@ class TVAE(BaseSynthesizer):
     self._epochs = epochs
     
     # Set device - use base class method
-    self.set_device()
-    if not cuda or not torch.cuda.is_available():
-        self.set_device(torch.device("cpu"))
-    else:
-        self.set_device(torch.device("cuda"))
+    # Normalize device selection once, respecting `cuda` flag
+    desired_device = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
+    self.set_device(desired_device)
         
     # Initialize transformer if data_info is provided
     if data_info is not None:
@@ -155,7 +154,7 @@ class TVAE(BaseSynthesizer):
   
   def _train(self, train_dataloader):
     """Train the TVAE model using tensor data from dataloader"""
-    print("Device of TVAE model is:", self._device)
+    logging.getLogger(__name__).debug("TVAE device: %s", str(self._device))
     
     self.init_model(train_dataloader)
     
@@ -165,7 +164,7 @@ class TVAE(BaseSynthesizer):
     for i in range(self._epochs):
         self.current_epoch = i + 1
         if i % 100 == 0:
-            print(f"Epoch {i}/{self._epochs}")
+            logging.getLogger(__name__).info("TVAE epoch %d/%d", i, self._epochs)
             
         for id_, data in enumerate(train_dataloader):
             self.optimizerAE.zero_grad()
@@ -214,7 +213,7 @@ class TVAE(BaseSynthesizer):
         data = data[:n]
 
         ed = time.time()
-        print("Sampling time: ", ed - st)
+        logging.getLogger(__name__).debug("TVAE sampling time: %.3fs", ed - st)
         return data
 
   def init_model(self, train_dataloader):
@@ -262,4 +261,3 @@ class TVAE(BaseSynthesizer):
       self.optimizerAE.load_state_dict(state['optimizerAE']) 
       
       self.model_loaded = True
-

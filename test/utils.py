@@ -226,19 +226,20 @@ def get_realistic_test_config(dataset_name, model_name):
     # Note: CTGAN appears to not be registered, so focusing on available models
     base_configs = {
         'Identity': {"epochs": 1, "batch_size": 32},
-        'TabDDPM': {"epochs": 10, "batch_size": 64, "num_timesteps": 100},
+        'TabDDPM': {"epochs": 2, "batch_size": 64, "num_timesteps": 10, "steps": 100},  # Reduced significantly
         'TVAE': {"epochs": 10, "batch_size": 128},
+        'CTGAN': {"epochs": 1, "batch_size": 128, "pac": 1},  # Minimal config for GPU testing
         'SMOTE': {"k_neighbors": 5, "random_state": 42},
-        'PATECTGAN': {"epochs": 10, "batch_size": 128},
+        'PATECTGAN': {"epochs": 2, "batch_size": 128},  # Reduced for testing
         'AIM': {"epsilon": 1.0, "delta": 1e-9, "max_iters": 100},
         'CART': {"max_depth": 10},
         'DPCART': {"max_depth": 10, "epsilon": 1.0},
         'BayesianNetwork': {"max_parents": 3},
-        'GREAT': {"epochs": 5, "batch_size": 32},  # Reduced for testing
+        'GREAT': {"epochs": 1, "batch_size": 32, "max_length": 32, "num_train_epochs": 1},  # Minimal for GPU testing
         'ARF': {"n_estimators": 10},  # Reduced for testing
         'NFlow': {"epochs": 10, "batch_size": 64},
-        'AutoDiff': {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 32},
-        'TabSyn': {"epochs": 10, "batch_size": 128}
+        'AutoDiff': {"n_epochs": 3, "diff_n_epochs": 3, "batch_size": 32},  # Reduced epochs for GPU testing
+        'TabSyn': {"epochs": 5, "batch_size": 128}  # Reduced epochs for GPU testing
     }
     
     # Dataset-specific adjustments

@@ -170,7 +170,8 @@ def train_autoencoder(df, hidden_size, num_layers, lr, weight_decay, n_epochs, b
       optimizer.step()
 
       gc.collect()
-      torch.cuda.empty_cache()
+      if torch.cuda.is_available():
+          torch.cuda.empty_cache()
 
       # Print the training loss over the epoch.
       losses.append(l2_loss.item())

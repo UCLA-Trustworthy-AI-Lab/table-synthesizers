@@ -12,6 +12,16 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+
+presentation/*
+
+core
+
+AGENTS.md
+*.md
+!README.md
+*.txt
+
 # Ignore virtual environments
 venv/
 env/

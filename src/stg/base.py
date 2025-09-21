@@ -2,6 +2,7 @@ import torch
 import threading
 import pandas as pd
 import numpy as np
+import logging
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, LabelEncoder
 
@@ -82,6 +83,8 @@ class BaseSynthesizer:
     self.column_info = {}
     self.encoded_data = None
     self.feature_names = []
+    # Logger
+    self._logger = logging.getLogger(__name__)
   
   def train(
         self,
@@ -133,11 +136,11 @@ class BaseSynthesizer:
         """Set the `device` to be used ('GPU' or 'CPU)."""
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self._device = self.device  # Also set _device for compatibility
         else:
             self.device = device
-            self._device = device  # Also set _device for compatibility
-            
+        # Keep alias for compatibility
+        self._device = self.device
+        
   def init_model(self, train_data):
     """Initialize attributes of the synthesizer"""
     pass
@@ -283,7 +286,7 @@ class BaseSynthesizer:
     """
     
     if self.checkpoint_interval_seconds is not None:
-      print("Thread started!")
+      self._logger.debug("Progress thread started")
       self.timer = threading.Timer(self.checkpoint_interval_seconds, self.update_frontend)
       self.timer.start()
       

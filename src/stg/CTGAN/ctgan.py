@@ -11,6 +11,7 @@ from torch.nn import functional
 
 import warnings
 import time
+import logging
 
 from packaging import version
 
@@ -26,7 +27,6 @@ class TransformerInfo:
 class TableTransformerInfo:
     def __init__(self,transform_info) -> None:
         column_ranges_in_transformed = transform_info
-        print(column_ranges_in_transformed)
         self.transformers = []
         self.output_width = 0
         for col_name, elements in column_ranges_in_transformed.items():
@@ -73,6 +73,7 @@ class CTGAN(BaseSynthesizer):
 
     self._data_sampler = None
     self._generator = None
+    self._logger = logging.getLogger(__name__)
   
   def _train(
         self,
@@ -211,9 +212,12 @@ class CTGAN(BaseSynthesizer):
         self.training_loss = loss_g
 
         if self._verbose:
-            print(f'Epoch {i+1}, Loss G: {loss_g.detach().cpu(): .4f},'  # noqa: T001
-                  f'Loss D: {loss_d.detach().cpu(): .4f}',
-                  flush=True)
+            self._logger.info(
+                'Epoch %d, Loss G: %.4f, Loss D: %.4f',
+                i + 1,
+                float(loss_g.detach().cpu()),
+                float(loss_d.detach().cpu()),
+            )
                       
 
   def generate(self, n, condition_column=None, condition_value=None):
@@ -268,13 +272,13 @@ class CTGAN(BaseSynthesizer):
         data = data[:n]
 
         ed = time.time()
-        print("Sampling time: ", ed - st)
+        self._logger.debug("Sampling time: %.3fs", ed - st)
         return data
 
-  def set_device(self):
-        """Set the `device` to be used ('GPU' or 'CPU)."""
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._device = device
+  def set_device(self, device=None):
+        """Set the device and move models accordingly."""
+        # Delegate to base for decision
+        super().set_device(device)
         if self._generator is not None:
             self._generator.to(self._device)
         if hasattr(self, 'discriminator') and self.discriminator is not None:
@@ -294,7 +298,7 @@ class CTGAN(BaseSynthesizer):
           self._transformer.transformers,)
 
         data_dim = self._transformer.output_width
-        print("Data_dim: ",data_dim)
+        self._logger.debug("CTGAN data_dim=%d", data_dim)
 
         self._generator = Generator(
           self._embedding_dim + self._data_sampler.dim_cond_vec(),

@@ -21,13 +21,11 @@ class MySMOTE(SMOTE):
         sampling_strategy="auto",
         random_state=None,
         k_neighbors: int = 3,
-        n_jobs: Optional[int] = None,
     ):
         super().__init__(
             sampling_strategy=sampling_strategy,
             random_state=random_state,
             k_neighbors=k_neighbors,
-            n_jobs=n_jobs,
         )
         self.lam1 = lam1
         self.lam2 = lam2
@@ -55,14 +53,12 @@ class MySMOTENC(SMOTENC):
         sampling_strategy="auto",
         random_state=None,
         k_neighbors: int = 3,
-        n_jobs: Optional[int] = None
     ):
         super().__init__(
             categorical_features=categorical_features,
             sampling_strategy=sampling_strategy,
             random_state=random_state,
             k_neighbors=k_neighbors,
-            n_jobs=n_jobs,
         )
         self.lam1 = lam1
         self.lam2 = lam2
