@@ -195,4 +195,30 @@ synthesizer = TableSynthesizer('PATECTGAN', {
 
 ## 📄 License
 
-[Add your license information here]
+This project is dual-licensed under Apache-2.0 OR MIT.
+
+- See `LICENSE-APACHE` for the Apache License, Version 2.0.
+- See `LICENSE-MIT` for the MIT License.
+- The top-level `LICENSE` file explains the dual-licensing terms.
+
+## 🙏 Attribution and Third-Party Licenses
+
+This project integrates and wraps ideas and/or components inspired by the following repositories. We acknowledge their authors and cite their licenses below:
+
+- SynthCity (VanderSchaar Lab): Apache License 2.0
+  - Repo: https://github.com/vanderschaarlab/synthcity
+  - License: https://raw.githubusercontent.com/vanderschaarlab/synthcity/main/LICENSE
+
+- TabSyn (Amazon Science): Apache License 2.0
+  - Repo: https://github.com/amazon-science/tabsyn
+  - License: https://raw.githubusercontent.com/amazon-science/tabsyn/main/LICENSE
+
+- AutoDiffusion (UCLA Trustworthy AI Lab): License not declared (no LICENSE file found as of this update)
+  - Repo: https://github.com/UCLA-Trustworthy-AI-Lab/AutoDiffusion
+  - Note: Please verify licensing terms before distribution or derivative use.
+
+- Synth-MIA (UCLA Trustworthy AI Lab): Repository unavailable at the provided URL (404); license unknown
+  - Repo (as cited): https://github.com/UCLA-Trustworthy-AI-Lab/Synth-MIA
+  - Note: If an updated location exists, please update CITED_LIBS and this section accordingly.
+
+If you are an author or maintainer of any cited project and prefer a different attribution format, please open an issue.

@@ -110,66 +110,91 @@ class DataFrameParser(object):
         self.new_dataframe = dataframe.copy()
         
         self._original_order = self.new_dataframe.columns.tolist()
-        self._original_column_to_dtype = column_to_dtype = self.new_dataframe.dtypes.to_dict()
+        # dtype mapping retained for debugging but switch to pandas dtype checks on Series
+        self._original_column_to_dtype = self.new_dataframe.dtypes.to_dict()
 
-        # sort through columns in dataframe.
-        for column, datatype in column_to_dtype.items():
-            if datatype in ['O', '<U32']:
-                cardinality = self.new_dataframe[column].nunique(dropna=False)
-                if cardinality == 2:
+        # sort through columns in dataframe using pandas dtype introspection
+        for column in list(self.new_dataframe.columns):
+            s = self.new_dataframe[column]
+            nunique = s.nunique(dropna=False)
+
+            # Treat pandas categorical and object/string columns as categorical-like
+            if pd.api.types.is_categorical_dtype(s) or pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+                if nunique == 2:
                     self.binary_columns.append(column)
                 else:
                     self.categorical_columns.append(column)
-                    if cardinality > self.max_cardinality:
+                    if nunique > self.max_cardinality:
                         self.need_freq_encoding.add(column)
-            
-            elif np.issubdtype(datatype, np.integer) and self.new_dataframe[column].nunique() == 2:
-                self.binary_columns.append(column)
-                self.need_bin_int.append(column)
-            
-            elif np.issubdtype(datatype, np.integer) and self.new_dataframe[column].nunique() <= 25 \
-                    and self.new_dataframe[column].nunique() >= 3:
-                self.categorical_columns.append(column)
-                self.need_int_encoding.append(column)
-            
+
+            # Integer typed columns: binary/small-cardinality categorical vs numeric
+            elif pd.api.types.is_integer_dtype(s):
+                if nunique == 2:
+                    self.binary_columns.append(column)
+                    self.need_bin_int.append(column)
+                elif 3 <= nunique <= 25:
+                    self.categorical_columns.append(column)
+                    self.need_int_encoding.append(column)
+                else:
+                    # Treat larger-cardinality integers as numerical
+                    self.numerical_columns.append(column)
+                    counts = s.value_counts()
+                    repeated_entries = counts[counts > threshold * len(s)].index.tolist()
+
+                    if len(repeated_entries) == 1:
+                        new_column_name = 'Binary_' + column
+                        self.binary_columns.append(new_column_name)
+                        self.need_bin_int.append(new_column_name)
+                        self.new_dataframe[new_column_name] = \
+                            s.apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0).astype(int)
+
+                    if 2 <= len(repeated_entries) <= 25:
+                        new_column_name = 'Cate_' + column
+                        self.categorical_columns.append(new_column_name)
+                        self.need_int_encoding.append(new_column_name)
+                        self.new_dataframe[new_column_name] = \
+                            s.apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0).astype(int)
+
             else:
-                self.numerical_columns.append(column)   
-                counts = self.new_dataframe[column].value_counts()
-                repeated_entries = counts[counts > threshold * len(self.new_dataframe[column])].index.tolist()
-                
+                # Fallback: treat as numerical (floats, booleans handled implicitly)
+                self.numerical_columns.append(column)
+                counts = s.value_counts()
+                repeated_entries = counts[counts > threshold * len(s)].index.tolist()
+
                 if len(repeated_entries) == 1:
                     new_column_name = 'Binary_' + column
-                    self.binary_columns.append('Binary_' + column)
-                    self.need_bin_int.append('Binary_' + column)
+                    self.binary_columns.append(new_column_name)
+                    self.need_bin_int.append(new_column_name)
                     self.new_dataframe[new_column_name] = \
-                        self.new_dataframe[column].apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0)
-                    self.new_dataframe[new_column_name] = self.new_dataframe[new_column_name].astype(int)
+                        s.apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0).astype(int)
 
-                if len(repeated_entries) >= 2 and len(repeated_entries) <= 25:
-                    new_column_name = 'Cate_' + column   
-                    self.categorical_columns.append('Cate_' + column)
-                    self.need_int_encoding.append('Cate_' + column)
+                if 2 <= len(repeated_entries) <= 25:
+                    new_column_name = 'Cate_' + column
+                    self.categorical_columns.append(new_column_name)
+                    self.need_int_encoding.append(new_column_name)
                     self.new_dataframe[new_column_name] = \
-                        self.new_dataframe[column].apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0)
-                    self.new_dataframe[new_column_name] = self.new_dataframe[new_column_name].astype(int)
+                        s.apply(lambda x: repeated_entries.index(x) + 1 if x in repeated_entries else 0).astype(int)
 
         self._column_order = self.binary_columns + self.categorical_columns + self.numerical_columns
 
         # fit encoders
         encoders = dict()
         for column in self.binary_columns:
-            if self.new_dataframe[column].dtype == int:
-                encoders[column] = LabelEncoder().fit_bin_int(self.new_dataframe[column].astype(int))
+            s = self.new_dataframe[column]
+            if pd.api.types.is_integer_dtype(s):
+                encoders[column] = LabelEncoder().fit_bin_int(s.astype(int))
             else:
-                encoders[column] = LabelEncoder().fit(self.new_dataframe[column].astype(str))
+                # For object/categorical binaries, encode as strings
+                encoders[column] = LabelEncoder().fit(s.astype(str))
 
         for column in self.categorical_columns:
+            s = self.new_dataframe[column]
             if column in self.need_freq_encoding:
-                encoders[column] = FreqLabelEncoder().fit(self.new_dataframe[column].astype(str))
+                encoders[column] = FreqLabelEncoder().fit(s.astype(str))
             elif column in self.need_int_encoding:
-                encoders[column] = LabelEncoder().fit(self.new_dataframe[column].astype(int))
+                encoders[column] = LabelEncoder().fit(s.astype(int))
             else:
-                encoders[column] = LabelEncoder().fit(self.new_dataframe[column].astype(str))
+                encoders[column] = LabelEncoder().fit(s.astype(str))
             self._cards.append(len(encoders[column]))
 
         for column in self.numerical_columns:
@@ -206,7 +231,7 @@ class DataFrameParser(object):
             if column in self.numerical_columns:
                 decoded_table[column] = StandardScaler().fit_invert(self.new_dataframe[column], encoded_table[column])
                 
-            elif column in self.binary_columns and np.issubdtype(self.new_dataframe[column].dtype, np.integer) == True: 
+            elif column in self.binary_columns and pd.api.types.is_integer_dtype(self.new_dataframe[column]):
                 decoded_table[column] = encoded_table[column].astype(int)
             
             elif column in self.need_int_encoding:

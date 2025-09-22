@@ -217,7 +217,8 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Convert to tensor format for compatibility
             # First encode categorical columns if any
             encoded_df = self._encode_for_tensor(synthetic_df)
-            return torch.tensor(encoded_df.values, dtype=torch.float32)
+            arr = encoded_df.to_numpy(dtype=float, copy=False)
+            return torch.tensor(arr, dtype=torch.float32)
     
     def _encode_for_tensor(self, df):
         """Encode DataFrame for tensor conversion."""
@@ -244,7 +245,8 @@ class TabSynSynthesizer(BaseSynthesizer):
         self._last_generated_df = synthetic_decoded_df
         
         # Convert encoded version to tensor for TableSynthesizer compatibility
-        return torch.tensor(synthetic_encoded_df.values, dtype=torch.float32)
+        arr = synthetic_encoded_df.to_numpy(dtype=float, copy=False)
+        return torch.tensor(arr, dtype=torch.float32)
     
     def decode_samples(self, tensor_samples):
         """Convert tensor samples back to DataFrame - used for return_dataframe=True."""

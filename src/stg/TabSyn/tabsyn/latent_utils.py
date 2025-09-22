@@ -10,6 +10,7 @@ def get_input_train(args):
     dataname = args.dataname
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
+    # Align with dataset prepared by process_dataset (under TabSyn/data/<name>)
     base_dir = os.path.abspath(os.path.join(curr_dir, '..'))
     dataset_dir = os.path.join(base_dir, 'data', dataname)
 

@@ -75,26 +75,39 @@ def create_dataset_with_metadata(np_array, dataset_name, task_type="binclass"):
     print(f"Dataset and metadata created successfully in {data_dir} and {info_dir}")
 
 def infer_task_type(dataset):
+    """Infer task type from the last column using pandas dtype checks.
+
+    Returns one of: "regression", "binclass", "multiclass".
+    """
     if isinstance(dataset, np.ndarray):
         return "regression"
     elif isinstance(dataset, pd.DataFrame):
         # Get the last column
         last_column = dataset.iloc[:, -1]
-        
-        # Check if the last column is numerical for regression
-        if np.issubdtype(last_column.dtype, np.number):
+
+        # Prefer pandas dtype checks to avoid NumPy issues with extension dtypes (e.g., CategoricalDtype)
+        is_numeric = pd.api.types.is_numeric_dtype(last_column)
+        is_categorical_like = (
+            pd.api.types.is_categorical_dtype(last_column)
+            or pd.api.types.is_object_dtype(last_column)
+            or pd.api.types.is_string_dtype(last_column)
+        )
+
+        if is_numeric:
+            # Heuristic: default to regression for numeric targets
             return "regression"
-        
-        # Check if the last column is object/string for classification tasks
-        elif last_column.dtype == object or isinstance(last_column.iloc[0], str):
-            unique_values_count = last_column.nunique()
-            
-            # If only 2 unique values, it’s binary classification
-            if unique_values_count == 2:
-                return "binclass"
-            # Otherwise, it's multiclass classification
-            else:
-                return "multiclass"
+
+        if is_categorical_like:
+            unique_values_count = last_column.nunique(dropna=True)
+            return "binclass" if unique_values_count == 2 else "multiclass"
+
+        # Fallback: try to coerce to numeric; if mostly numeric, treat as regression
+        coerced = pd.to_numeric(last_column, errors='coerce')
+        if coerced.notna().sum() > 0.7 * len(last_column):
+            return "regression"
+
+        unique_values_count = last_column.nunique(dropna=True)
+        return "binclass" if unique_values_count == 2 else "multiclass"
     else:
         raise ValueError("Dataset type not supported. Please provide a numpy array or pandas DataFrame.")
 

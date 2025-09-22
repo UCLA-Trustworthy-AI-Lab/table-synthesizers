@@ -58,7 +58,8 @@ def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
 
 def main(args):
     dataname = args.dataname
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+    # Use the TabSyn package base (two levels up) so it aligns with process_dataset outputs
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
     data_dir = os.path.join(base_dir, 'data', dataname)
 
     max_beta = args.max_beta
@@ -117,7 +118,8 @@ def main(args):
     pre_decoder.eval()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=WD)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=10, verbose=True)
+    # Some torch versions do not support 'verbose' kwarg
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=10)
 
     num_epochs = args.epochs
     best_train_loss = float('inf')
