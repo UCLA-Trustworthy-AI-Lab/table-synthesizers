@@ -14,7 +14,7 @@ def data():
 
 def test_PATECTGAN(data):
     model = 'PATECTGAN'
-    config = {}
+    config = {"epochs": 1, "batch_size": 128, "pac": 1}  # Minimal config for GPU testing
     
     dataloaders, data_infos = data
     for i, (dataloader, data_info) in enumerate(zip(dataloaders, data_infos)):
@@ -34,7 +34,7 @@ def test_PATECTGAN_dataframe_support(data):
     """Test PATECTGAN with DataFrame input using shared utility"""
     from utils import test_dataframe_support
     
-    config = {"epochs": 2, "batch_size": 32, "embedding_dim": 64}
+    config = {"epochs": 1, "batch_size": 32, "embedding_dim": 64}  # Reduced epochs for testing
     test_dataframe_support('PATECTGAN', config, n_samples=10)
 
 if __name__ == "__main__":

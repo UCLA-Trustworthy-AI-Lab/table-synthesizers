@@ -1,14 +1,20 @@
+import logging
 from .base import BaseSynthesizer
 from .identity import Identity
 from .CTGAN import CTGAN
-from .TabDDPM import TabDDPM
+try:
+    from .TabDDPM import TabDDPM
+    TABDDPM_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABDDPM_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabDDPM not available due to dependencies: %s", str(e))
 from .PATECTGAN import PATECTGAN
 try:
     from .AIM import AIM
     AIM_AVAILABLE = True
 except ImportError:
     AIM_AVAILABLE = False
-    print("Warning: AIM not available due to missing dependencies")
+    logging.getLogger(__name__).warning("AIM not available due to missing dependencies")
 from .TVAE import TVAE
 
 # New synthesizers that only support DataFrame input
@@ -19,7 +25,7 @@ try:
     SMOTE_AVAILABLE = True
 except ImportError:
     SMOTE_AVAILABLE = False
-    print("Warning: SMOTE not available due to missing dependencies (imbalanced-learn)")
+    logging.getLogger(__name__).warning("SMOTE not available due to missing dependencies (imbalanced-learn)")
 
 # New synthesizers from Gen_MIA experiments
 try:
@@ -27,42 +33,42 @@ try:
     BAYESIANNETWORK_AVAILABLE = True
 except (ImportError, AttributeError) as e:
     BAYESIANNETWORK_AVAILABLE = False
-    print(f"Warning: BayesianNetwork not available due to dependencies: {str(e)}")
+    logging.getLogger(__name__).warning("BayesianNetwork not available due to dependencies: %s", str(e))
 
 try:
     from .GREAT import GREATSynthesizer
     GREAT_AVAILABLE = True
 except (ImportError, AttributeError) as e:
     GREAT_AVAILABLE = False
-    print(f"Warning: GREAT not available due to dependencies: {str(e)}")
+    logging.getLogger(__name__).warning("GREAT not available due to dependencies: %s", str(e))
 
 try:
     from .ARF import ARFSynthesizer
     ARF_AVAILABLE = True
 except (ImportError, AttributeError) as e:
     ARF_AVAILABLE = False
-    print(f"Warning: ARF not available due to dependencies: {str(e)}")
+    logging.getLogger(__name__).warning("ARF not available due to dependencies: %s", str(e))
 
 try:
     from .NFlow import NFlowSynthesizer
     NFLOW_AVAILABLE = True
 except (ImportError, AttributeError) as e:
     NFLOW_AVAILABLE = False
-    print(f"Warning: NFlow not available due to dependencies: {str(e)}")
+    logging.getLogger(__name__).warning("NFlow not available due to dependencies: %s", str(e))
 
 try:
     from .AutoDiff import AutoDiffSynthesizer
     AUTODIFF_AVAILABLE = True
 except ImportError:
     AUTODIFF_AVAILABLE = False
-    print("Warning: AutoDiff not available due to missing dependencies")
+    logging.getLogger(__name__).warning("AutoDiff not available due to missing dependencies")
 
 try:
     from .TabSyn import TabSynSynthesizer
     TABSYN_AVAILABLE = True
 except ImportError:
     TABSYN_AVAILABLE = False
-    print("Warning: TabSyn not available due to missing dependencies")
+    logging.getLogger(__name__).warning("TabSyn not available due to missing dependencies")
 
 try:
     from .LTM_VAE import LTMVAESynthesizer
@@ -74,13 +80,16 @@ except ImportError:
 import numpy as np
 import torch
 
+
 DEFAULT_MODELS = {"Identity":Identity,
-                  #"CTGAN":CTGAN,
-                  "TabDDPM":TabDDPM,
+                  "CTGAN":CTGAN,
                   "PATECTGAN":PATECTGAN,
                   "TVAE":TVAE,
                   "CART":CARTSynthesizer,
                   "DPCART":DPCARTSynthesizer}
+
+if 'TABDDPM_AVAILABLE' in globals() and TABDDPM_AVAILABLE:
+    DEFAULT_MODELS["TabDDPM"] = TabDDPM
 
 if AIM_AVAILABLE:
     DEFAULT_MODELS["AIM"] = AIM
@@ -301,9 +310,9 @@ class TableSynthesizer:
         """
         if checkpoint is not None:
             self.model.load_state(checkpoint)
-            print("Model loaded from checkpoint!",flush=True)
+            logging.getLogger(__name__).info("Model loaded from checkpoint!")
         else:
-            print("Model initialized!",flush=True)
+            logging.getLogger(__name__).info("Model initialized!")
 
     def get_checkpoint(self):
         """ Return all model parameters and hyperparameters necessary for running a synthesizer.

@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-import src
+from . import src as tsrc
 from torch.utils.data import Dataset
 
 
@@ -32,7 +32,7 @@ def preprocess(dataset_path, task_type='binclass', inverse=False, cat_encoding=N
     T_dict['cat_encoding'] = cat_encoding
     T_dict['y_policy'] = "default"
 
-    T = src.Transformations(**T_dict)
+    T = tsrc.Transformations(**T_dict)
 
     dataset = make_dataset(
         data_path=dataset_path,
@@ -62,7 +62,7 @@ def preprocess(dataset_path, task_type='binclass', inverse=False, cat_encoding=N
 
         if X_cat is not None:
             X_train_cat, X_test_cat = X_cat.get('train'), X_cat.get('test')
-            categories = src.get_categories(X_train_cat) if X_train_cat is not None else []
+            categories = tsrc.get_category_sizes(X_train_cat) if X_train_cat is not None else []
         X_cat = (X_train_cat, X_test_cat)
 
         # Handle inverse transformation if needed
@@ -98,7 +98,7 @@ def concat_y_to_X(X, y):
 
 def make_dataset( 
     data_path: str,
-    T: src.Transformations,
+    T: tsrc.Transformations,
     task_type,
     change_val: bool,
     concat = True,
@@ -124,7 +124,7 @@ def make_dataset(
         y = {} if y is not None else None
 
         for split in ['train', 'test']:
-            X_num_t, X_cat_t, y_t = src.read_pure_data(data_path, split)
+            X_num_t, X_cat_t, y_t = tsrc.read_pure_data(data_path, split)
             if X_num is not None:
                 X_num[split] = X_num_t
             if X_cat is not None:
@@ -144,7 +144,7 @@ def make_dataset(
         y = {} if y is not None else None
 
         for split in ['train', 'test']:
-            X_num_t, X_cat_t, y_t = src.read_pure_data(data_path, split)
+            X_num_t, X_cat_t, y_t = tsrc.read_pure_data(data_path, split)
             if X_num is not None:
                 if concat:
                     X_num_t = concat_y_to_X(X_num_t, y_t)
@@ -154,18 +154,18 @@ def make_dataset(
             if y is not None:
                 y[split] = y_t
 
-    info = src.load_json(os.path.join(data_path, 'info.json'))
+    info = tsrc.load_json(os.path.join(data_path, 'info.json'))
 
-    D = src.Dataset(
+    D = tsrc.Dataset(
         X_num,
         X_cat,
         y,
         y_info={},
-        task_type=src.TaskType(info['task_type']),
+        task_type=tsrc.TaskType(info['task_type']),
         n_classes=info.get('n_classes')
     )
 
     if change_val:
-        D = src.change_val(D)
+        D = tsrc.change_val(D)
 
-    return src.transform_dataset(D, T, None)
+    return tsrc.transform_dataset(D, T, None)

@@ -16,7 +16,7 @@ def data():
 
 def test_CTGAN(data):
     model = 'CTGAN'
-    config = {}
+    config = {"epochs": 1, "batch_size": 32, "pac": 1, "generator_lr": 0.0002, "discriminator_lr": 0.0002}  # Minimal config for fast testing
     
     dataloaders, data_infos = data
     for i, (dataloader, data_info) in enumerate(zip(dataloaders, data_infos)):
@@ -37,7 +37,7 @@ def test_CTGAN_dataframe_support(data):
     """Test CTGAN with DataFrame input using shared utility"""
     from utils import test_dataframe_support
     
-    config = {"epochs": 2, "batch_size": 32, "embedding_dim": 64, "pac": 1}  # Use pac=1 for simplicity
+    config = {"epochs": 1, "batch_size": 32, "embedding_dim": 64, "pac": 1}  # Reduced epochs for testing
     test_dataframe_support('CTGAN', config, n_samples=10)
 
 

@@ -431,7 +431,8 @@ def main():
         synthesizer_names = list(DEFAULT_MODELS.keys())
         print(f"🔧 Running ALL synthesizers: {len(synthesizer_names)}")
     else:
-        synthesizer_names = select_optimal_synthesizers(dataset_stats)
+        # synthesizer_names = select_optimal_synthesizers(dataset_stats)
+        synthesizer_names = ['CART', 'AutoDiff', 'TabSyn']
     
     configs = get_realistic_synthesizer_configs()
     

@@ -28,13 +28,12 @@ from ..CTGAN.data_sampler import DataSampler
 from .privacy_utils import weights_init, pate, moments_acc
 
 from ..base import BaseSynthesizer
+import logging
 
 
 class Discriminator(Module):
     def __init__(self, input_dim, discriminator_dim, loss, pac=10):
         super(Discriminator, self).__init__()
-        torch.cuda.manual_seed(0)
-        torch.manual_seed(0)
 
         dim = input_dim * pac
         #  print ('now dim is {}'.format(dim))
@@ -123,7 +122,7 @@ class TransformerInfo:
 class TableTransformerInfo:
     def __init__(self,transform_info) -> None:
         column_ranges_in_transformed = transform_info
-        print(column_ranges_in_transformed)
+        logging.getLogger(__name__).debug("PATECTGAN transform_info initialized")
         self.transformers = []
         self.output_width = 0
         for col_name, elements in column_ranges_in_transformed.items():
@@ -217,6 +216,7 @@ class PATECTGAN(BaseSynthesizer):
         self.noise_multiplier = noise_multiplier
         self.moments_order = moments_order
         self.delta = delta
+        self._logger = logging.getLogger(__name__)
 
         # Initialize transformer if data_info is provided
         if data_info is not None:
@@ -224,14 +224,12 @@ class PATECTGAN(BaseSynthesizer):
         else:
             self._transformer = None
 
-        if not cuda or not torch.cuda.is_available():
-            device = "cpu"
-        elif isinstance(cuda, str):
-            device = cuda
+        # Normalize device selection via BaseSynthesizer
+        if isinstance(cuda, str):
+            desired = torch.device(cuda)
         else:
-            device = "cuda"
-
-        self._device = torch.device(device)
+            desired = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
+        self.set_device(desired)
 
     def _train(
         self,
@@ -324,10 +322,8 @@ class PATECTGAN(BaseSynthesizer):
         criterion = nn.BCELoss() if (self.loss == "cross_entropy") else self.w_loss
 
         if self.verbose:
-            print(
-                "using loss {} and regularization {}".format(
-                    self.loss, self.regularization
-                )
+            logging.getLogger(__name__).info(
+                "Using loss %s and regularization %s", self.loss, self.regularization
             )
 
         iteration = 0
@@ -536,10 +532,9 @@ class PATECTGAN(BaseSynthesizer):
             self.optimizerG.step()
 
             if self.verbose:
-                print(
-                    "eps: {:f} \t G: {:f} \t D: {:f}".format(
-                        eps, loss_g.detach().cpu(), loss_s.detach().cpu()
-                    )
+                logging.getLogger(__name__).info(
+                    "eps: %f \t G: %f \t D: %f",
+                    float(eps), float(loss_g.detach().cpu()), float(loss_s.detach().cpu())
                 )
         #self.stop_threading()
 
@@ -698,7 +693,7 @@ class PATECTGAN(BaseSynthesizer):
         if torch.isnan(logits).any():
             raise ValueError("gumbel_softmax logits input has NaN!!!!")
         if version.parse(torch.__version__) < version.parse("1.2.0"):
-            print("Running other version!")
+            logging.getLogger(__name__).debug("PATECTGAN: using compatibility gumbel_softmax path")
             for i in range(10):
                 transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard,
                                                         eps=eps, dim=dim)
@@ -708,8 +703,11 @@ class PATECTGAN(BaseSynthesizer):
 
         transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard, eps=eps, dim=dim)
         if torch.isnan(transformed).any():
-            warnings.warn(f"Nan found in gumbel_softmax! Standardizing logits.")
-            print(torch.min(logits), torch.mean(logits), torch.max(logits), tau, hard, eps, dim)
+            warnings.warn("Nan found in gumbel_softmax! Standardizing logits.")
+            logging.getLogger(__name__).debug(
+                "gumbel_softmax NaN with logits stats: min=%s mean=%s max=%s tau=%s hard=%s eps=%s dim=%s",
+                torch.min(logits), torch.mean(logits), torch.max(logits), tau, hard, eps, dim
+            )
             standardized_logits = (logits - torch.min(logits)) / (torch.max(logits) - torch.min(logits))
             transformed = functional.gumbel_softmax(standardized_logits, tau=tau, hard=hard, eps=eps, dim=dim)
         if torch.isnan(transformed).any():
@@ -733,7 +731,7 @@ class PATECTGAN(BaseSynthesizer):
                     st_idx = ed-transformer.output_width
                     for transformer in self._transformer.transformers:
                         stt += transformer.output_width
-                        print(stt)
+                        logging.getLogger(__name__).debug("PATECTGAN activation position: %s", stt)
                     raise ValueError(f"Nan in transformed numerical {st_idx}")
             elif transformer.is_categorical:
                 ed = st + transformer.output_width

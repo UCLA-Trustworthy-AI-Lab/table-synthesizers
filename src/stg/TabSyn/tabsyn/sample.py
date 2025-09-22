@@ -4,9 +4,9 @@ import argparse
 import warnings
 import time
 
-from tabsyn.model import MLPDiffusion, Model
-from tabsyn.latent_utils import get_input_generate, recover_data, split_num_cat_target
-from tabsyn.diffusion_utils import sample
+from .model import MLPDiffusion, Model
+from .latent_utils import get_input_generate, recover_data, split_num_cat_target
+from .diffusion_utils import sample
 
 warnings.filterwarnings('ignore')
 

@@ -228,6 +228,7 @@ def get_realistic_test_config(dataset_name, model_name):
         'Identity': {"epochs": 1, "batch_size": 32},
         'TabDDPM': {"epochs": 10, "batch_size": 64, "num_timesteps": 100},
         'TVAE': {"epochs": 10, "batch_size": 128},
+        #'CTGAN': {"epochs": 1, "batch_size": 128, "pac": 1},  # Minimal config for GPU testing
         'SMOTE': {"k_neighbors": 5, "random_state": 42},
         'PATECTGAN': {"epochs": 10, "batch_size": 128},
         'AIM': {"epsilon": 1.0, "delta": 1e-9, "max_iters": 100},

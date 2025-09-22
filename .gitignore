@@ -12,6 +12,16 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+
+presentation/*
+
+core
+
+AGENTS.md
+*.md
+!README.md
+*.txt
+
 # Ignore virtual environments
 venv/
 env/
@@ -27,19 +37,18 @@ example/sandbox*/*
 *nohup.out
 example/command
 
-# exclude data folders
 src/stg/TabSyn/data/*
 src/stg/TabSyn/data/test_tabsyn_df/*
 *.pt
 src/stg/TabSyn/tabsyn/vae/ckpt/*
 src/stg/TabSyn/synthetic/*
 
+
 # csv file
 *.csv
 
 # pth file
 *.pth
-
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/

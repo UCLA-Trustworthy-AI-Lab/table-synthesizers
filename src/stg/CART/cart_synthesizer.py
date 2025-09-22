@@ -19,7 +19,8 @@ class CARTSynthesizer(BaseSynthesizer):
     def __init__(self, data_info=None, max_depth=None, random_state=None, **kwargs):
         super().__init__(data_info=data_info, **kwargs)
         self.max_depth = max_depth
-        self.random_state = random_state
+        # Use provided random_state or fallback to global seed if available
+        self.random_state = random_state if random_state is not None else getattr(self, "_seed", None)
         self.trained_data = None
         self.numeric_cols = []
         self.categorical_cols = []

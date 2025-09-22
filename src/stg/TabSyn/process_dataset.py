@@ -13,7 +13,8 @@ TYPE_TRANSFORM ={
     'int', int
 }
 
-INFO_PATH = 'data/Info'
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INFO_PATH = os.path.join(BASE_DIR, 'data', 'Info')
 
 parser = argparse.ArgumentParser(description='process dataset')
 
@@ -27,7 +28,7 @@ else:
     args = None
 
 def preprocess_beijing():
-    with open(f'{INFO_PATH}/beijing.json', 'r') as f:
+    with open(os.path.join(INFO_PATH, 'beijing.json'), 'r') as f:
         info = json.load(f)
     
     data_path = info['raw_data_path']
@@ -42,7 +43,7 @@ def preprocess_beijing():
     df_cleaned.to_csv(info['data_path'], index = False)
 
 def preprocess_news():
-    with open(f'{INFO_PATH}/news.json', 'r') as f:
+    with open(os.path.join(INFO_PATH, 'news.json'), 'r') as f:
         info = json.load(f)
 
     data_path = info['raw_data_path']
@@ -63,7 +64,7 @@ def preprocess_news():
     data_df['data_channel'] = cat_col1
     data_df['weekday'] = cat_col2
     
-    data_save_path = 'data/news/news.csv'
+    data_save_path = os.path.join(BASE_DIR, 'data', 'news', 'news.csv')
     data_df.to_csv(f'{data_save_path}', index = False)
 
     columns = np.array(data_df.columns.tolist())
@@ -77,7 +78,7 @@ def preprocess_news():
     info['data_path'] = data_save_path
     
     name = 'news'
-    with open(f'{INFO_PATH}/{name}.json', 'w') as file:
+    with open(os.path.join(INFO_PATH, f'{name}.json'), 'w') as file:
         json.dump(info, file, indent=4)
 
 
@@ -299,7 +300,7 @@ def process_data(name):
     elif name == 'beijing':
         preprocess_beijing()
 
-    with open(f'{INFO_PATH}/{name}.json', 'r') as f:
+    with open(os.path.join(INFO_PATH, f'{name}.json'), 'r') as f:
         info = json.load(f)
 
     data_path = info['data_path']
@@ -333,7 +334,7 @@ def process_data(name):
 
         with open(test_path, 'r') as f:
             lines = f.readlines()[1:]
-            test_save_path = f'data/{name}/test.data'
+            test_save_path = os.path.join(BASE_DIR, 'data', name, 'test.data')
             if not os.path.exists(test_save_path):
                 with open(test_save_path, 'a') as f1:     
                     for line in lines:
@@ -409,27 +410,28 @@ def process_data(name):
     print("NP array created!")
 
  
-    save_dir = f'data/{name}'
-    np.save(f'{save_dir}/X_num_train.npy', X_num_train)
-    np.save(f'{save_dir}/X_cat_train.npy', X_cat_train)
-    np.save(f'{save_dir}/y_train.npy', y_train)
+    save_dir = os.path.join(BASE_DIR, 'data', name)
+    np.save(os.path.join(save_dir, 'X_num_train.npy'), X_num_train)
+    np.save(os.path.join(save_dir, 'X_cat_train.npy'), X_cat_train)
+    np.save(os.path.join(save_dir, 'y_train.npy'), y_train)
 
-    np.save(f'{save_dir}/X_num_test.npy', X_num_test)
-    np.save(f'{save_dir}/X_cat_test.npy', X_cat_test)
-    np.save(f'{save_dir}/y_test.npy', y_test)
+    np.save(os.path.join(save_dir, 'X_num_test.npy'), X_num_test)
+    np.save(os.path.join(save_dir, 'X_cat_test.npy'), X_cat_test)
+    np.save(os.path.join(save_dir, 'y_test.npy'), y_test)
 
     train_df[num_columns] = train_df[num_columns].astype(np.float32)
     test_df[num_columns] = test_df[num_columns].astype(np.float32)
 
 
-    train_df.to_csv(f'{save_dir}/train.csv', index = False)
-    test_df.to_csv(f'{save_dir}/test.csv', index = False)
+    train_df.to_csv(os.path.join(save_dir, 'train.csv'), index = False)
+    test_df.to_csv(os.path.join(save_dir, 'test.csv'), index = False)
 
-    if not os.path.exists(f'synthetic/{name}'):
-        os.makedirs(f'synthetic/{name}')
+    synthetic_dir = os.path.join(BASE_DIR, 'synthetic', name)
+    if not os.path.exists(synthetic_dir):
+        os.makedirs(synthetic_dir)
     
-    train_df.to_csv(f'synthetic/{name}/real.csv', index = False)
-    test_df.to_csv(f'synthetic/{name}/test.csv', index = False)
+    train_df.to_csv(os.path.join(synthetic_dir, 'real.csv'), index = False)
+    test_df.to_csv(os.path.join(synthetic_dir, 'test.csv'), index = False)
 
     print('Numerical', X_num_train.shape)
     print('Categorical', X_cat_train.shape)
@@ -472,7 +474,7 @@ def process_data(name):
 
     info['metadata'] = metadata
 
-    with open(f'{save_dir}/info.json', 'w') as file:
+    with open(os.path.join(save_dir, 'info.json'), 'w') as file:
         json.dump(info, file, indent=4)
 
     print(f'Processing and Saving {name} Successfully!')
@@ -500,4 +502,3 @@ if __name__ == "__main__":
             process_data(name)
 
         
-

@@ -16,7 +16,7 @@ def data():
 
 def test_TabDDPM(data):
     model = 'TabDDPM'
-    config = {}
+    config = {"steps": 100, "num_timesteps": 10, "batch_size": 64}  # Reduced steps for faster testing
     
     dataloaders, data_infos = data
     for i, (dataloader, data_info) in enumerate(zip(dataloaders, data_infos)):

@@ -2,9 +2,9 @@ import functools
 import torch
 import torch.nn as nn
 import numpy as np
-import tqdm.notebook
+from tqdm import trange
 import random
-from tqdm.auto import trange
+from tqdm.auto import trange as auto_trange
 from torch.optim import Adam
 from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
@@ -193,7 +193,7 @@ def Euler_Maruyama_sampling(model, T, N, P, device):
     init_x = torch.randn(N, P)
     X = init_x.to(device)
     
-    tqdm_epoch = tqdm.trange(T)
+    tqdm_epoch = trange(T)
     
     with torch.no_grad():
         for epoch in tqdm_epoch:
