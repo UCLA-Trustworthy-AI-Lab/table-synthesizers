@@ -63,11 +63,14 @@ def sample(
     gaussian_loss_type = 'mse',
     scheduler = 'cosine',
     disbalance = None,
-    device = torch.device('cuda:1'),
+    device = None,
     seed = 0,
 ):
     zero.improve_reproducibility(seed)
-
+    
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     
 
     category_sizes = []

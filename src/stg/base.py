@@ -133,8 +133,10 @@ class BaseSynthesizer:
         """Set the `device` to be used ('GPU' or 'CPU)."""
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self._device = self.device  # Also set _device for compatibility
         else:
             self.device = device
+            self._device = device  # Also set _device for compatibility
             
   def init_model(self, train_data):
     """Initialize attributes of the synthesizer"""

@@ -32,7 +32,7 @@ def test_PATECTGAN(data):
 
 def test_PATECTGAN_dataframe_support(data):
     """Test PATECTGAN with DataFrame input using shared utility"""
-    from dataframe_test_utils import test_dataframe_support
+    from utils import test_dataframe_support
     
     config = {"epochs": 2, "batch_size": 32, "embedding_dim": 64}
     test_dataframe_support('PATECTGAN', config, n_samples=10)

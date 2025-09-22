@@ -14,8 +14,13 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
 
-device = 'cuda'  #@param ['cuda', 'cpu'] {'type':'string'}
-torch.cuda.empty_cache()
+# Device selection with fallback
+if torch.cuda.is_available():
+    device = 'cuda'
+    torch.cuda.empty_cache()
+else:
+    device = 'cpu'
+    print("Warning: CUDA not available, using CPU")
 
 ###########################################################################################################################################
 ModuleType = Union[str, Callable[..., nn.Module]]

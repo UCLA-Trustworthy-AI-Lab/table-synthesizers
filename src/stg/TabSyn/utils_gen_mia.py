@@ -17,25 +17,38 @@ def create_dataset_with_metadata(np_array, dataset_name, task_type="binclass"):
     df = pd.DataFrame(np_array)
     
     # Step 2: Infer column types
-   
-    num_cols = df.select_dtypes(include=['number']).columns
-    cat_cols = df.select_dtypes(exclude=['number']).columns
+    # Ensure proper type detection by converting numeric-like columns
+    df_typed = df.copy()
+    
+    # Try to convert columns that look numeric to proper numeric types
+    for col in df.columns:
+        try:
+            # Try to convert to numeric, allowing for mixed types
+            numeric_col = pd.to_numeric(df[col], errors='coerce')
+            # If most values can be converted to numeric, treat as numeric
+            if numeric_col.notna().sum() > len(df) * 0.7:  # 70% threshold
+                df_typed[col] = pd.to_numeric(df[col], errors='coerce')
+        except:
+            pass
+    
+    # Now detect column types from the properly typed DataFrame
+    num_cols = df_typed.select_dtypes(include=['number']).columns
+    cat_cols = df_typed.select_dtypes(exclude=['number']).columns
     
     
     # Define the target column index; you may need to adjust this based on specific requirements
-    target_col_idx = [df.shape[1] - 1]  # Assuming the last column as target by default
-    target_col = df.columns[-1]
-    num_col_idx = [df.columns.get_loc(col) for col in num_cols if col != target_col] 
-    cat_col_idx = [df.columns.get_loc(col) for col in cat_cols if col != target_col] 
-    print(df.dtypes)
+    target_col_idx = [df_typed.shape[1] - 1]  # Assuming the last column as target by default
+    target_col = df_typed.columns[-1]
+    num_col_idx = [df_typed.columns.get_loc(col) for col in num_cols if col != target_col] 
+    cat_col_idx = [df_typed.columns.get_loc(col) for col in cat_cols if col != target_col] 
     
     # Step 3: Create the directory structure
     data_dir = f"./data/{dataset_name}"
     os.makedirs(data_dir, exist_ok=True)
     
-    # Step 4: Save the DataFrame as a CSV file
+    # Step 4: Save the properly typed DataFrame as a CSV file
     csv_path = f"{data_dir}/{dataset_name}.csv"
-    df.to_csv(csv_path, index=False, header=True)
+    df_typed.to_csv(csv_path, index=False, header=True)
     
     # Step 5: Create metadata dictionary
     metadata = {

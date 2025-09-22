@@ -4,6 +4,7 @@ import torch
 import subprocess
 import os
 import tempfile
+import time
 from typing import Optional
 
 from ..base import BaseSynthesizer
@@ -26,7 +27,7 @@ class TabSynSynthesizer(BaseSynthesizer):
     Only supports DataFrame input (not DataLoader).
     """
     
-    def __init__(self, data_info=None, dataset_name=None, **kwargs):
+    def __init__(self, data_info=None, dataset_name=None, epochs=10, **kwargs):
         if not TABSYN_AVAILABLE:
             raise ImportError("TabSyn dependencies are required for TabSynSynthesizer")
         
@@ -34,9 +35,14 @@ class TabSynSynthesizer(BaseSynthesizer):
         
         # TabSyn parameters
         self.dataset_name = dataset_name or f"tabsyn_dataset_{id(self)}"
+        self.epochs = epochs  # Add epochs parameter with reasonable default
         self.stored_data = None
         self.trained = False
-        
+
+    def fit(self, data):
+        """Sklearn-style fit method."""
+        self.train(data)
+
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):
@@ -53,33 +59,46 @@ class TabSynSynthesizer(BaseSynthesizer):
         original_dir = os.getcwd()
         
         try:
+            start_total = time.time()
             # Change to TabSyn directory 
             tabsyn_dir = os.path.join(os.path.dirname(__file__))
             os.chdir(tabsyn_dir)
+            print(f"[TabSyn][train] cwd={os.getcwd()}, dataset={self.dataset_name}", flush=True)
             
             # Prepare the dataset
+            prep_start = time.time()
+            print("[TabSyn][train] Preparing dataset and metadata...", flush=True)
             task_type = infer_task_type(train_data.values)
             create_dataset_with_metadata(train_data.values, self.dataset_name, task_type)
             process_data(self.dataset_name)
+            print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
             
             # Step 1: Train the VAE model
+            vae_start = time.time()
+            print("[TabSyn][train] Starting VAE training subprocess...", flush=True)
             subprocess.run([
-                "python", "main.py",
+                "python", os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "vae",
-                "--mode", "train"
+                "--mode", "train",
+                "--epochs", str(self.epochs)
             ], check=True)
+            print(f"[TabSyn][train] VAE training finished in {time.time()-vae_start:.2f}s", flush=True)
             
             # Step 2: Train the diffusion model
+            diff_start = time.time()
+            print("[TabSyn][train] Starting diffusion training subprocess...", flush=True)
             subprocess.run([
-                "python", "main.py",
+                "python", os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
-                "--mode", "train"
+                "--mode", "train",
+                "--epochs", str(self.epochs)
             ], check=True)
+            print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             
             self.trained = True
-            print("TabSyn training completed!")
+            print(f"[TabSyn][train] Completed in {time.time()-start_total:.2f}s", flush=True)
             
         except subprocess.CalledProcessError as e:
             print(f"TabSyn training error: {e}")
@@ -112,18 +131,30 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Change to TabSyn directory
             tabsyn_dir = os.path.join(os.path.dirname(__file__))
             os.chdir(tabsyn_dir)
+            start_sampling_total = time.time()
+            print(f"[TabSyn][sample] cwd={os.getcwd()}, dataset={self.dataset_name}, save_path={save_path}", flush=True)
             
             # Generate synthetic data
+            subp_start = time.time()
+            print("[TabSyn][sample] Starting sampling subprocess...", flush=True)
             subprocess.run([
-                "python", "main.py",
+                "python", os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "sample",
                 "--save_path", save_path
             ], check=True)
+            print(f"[TabSyn][sample] Sampling subprocess finished in {time.time()-subp_start:.2f}s", flush=True)
             
             # Load synthetic data
+            read_start = time.time()
             synthetic_df = pd.read_csv(save_path)
+            print(f"[TabSyn][sample] Loaded CSV in {time.time()-read_start:.2f}s with shape={synthetic_df.shape}", flush=True)
+            
+            # Restore original column names if stored_data is available
+            if self.stored_data is not None and synthetic_df.shape[1] == len(self.stored_data.columns):
+                synthetic_df.columns = self.stored_data.columns
+                print(f"[TabSyn][sample] Restored original column names: {list(synthetic_df.columns)}", flush=True)
             
             # Ensure we get the requested number of samples
             if len(synthetic_df) > n_samples:
@@ -144,6 +175,7 @@ class TabSynSynthesizer(BaseSynthesizer):
                 os.remove(save_path)
             # Return to original directory
             os.chdir(original_dir)
+            print(f"[TabSyn][sample] Total sampling time {time.time()-start_sampling_total:.2f}s", flush=True)
         
         return synthetic_df
     

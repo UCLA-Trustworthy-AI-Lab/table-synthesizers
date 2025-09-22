@@ -586,8 +586,15 @@ class PATECTGAN(BaseSynthesizer):
     def fit(self, data, *ignore, transformer=None, categorical_columns=[], ordinal_columns=[], continuous_columns=[], preprocessor_eps=0.0, nullable=False):
         self.train(data)
 
-    def sample(self, n_samples):
-        return self.generate(n_samples)
+    def sample(self, n_samples, return_dataframe=False):
+        samples = self.generate(n_samples)
+        if return_dataframe:
+            # PATECTGAN doesn't have proper DataFrame decoding yet
+            # Return tensor for now - this is a known limitation
+            print("Warning: PATECTGAN DataFrame output not fully implemented, returning tensor")
+            return samples
+        else:
+            return samples
 
             
     def get_state(self):

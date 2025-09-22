@@ -125,7 +125,7 @@ class TabDDPM(BaseSynthesizer):
         }
         start_idx += 1
     
-    # Process categorical columns with Label Encoding (TabDDPM handles categoricals differently)
+    # Process categorical columns with Label Encoding (TabDDPM expects Label encoded data)
     for col in categorical_cols:
         from sklearn.preprocessing import LabelEncoder
         encoder = LabelEncoder()
@@ -156,6 +156,10 @@ class TabDDPM(BaseSynthesizer):
   
   def decode_samples(self, samples):
     """Decode TabDDPM samples back to original DataFrame format"""
+    import torch
+    import pandas as pd
+    import numpy as np
+    
     if isinstance(samples, torch.Tensor):
         samples = samples.detach().cpu().numpy()
     
@@ -169,9 +173,9 @@ class TabDDPM(BaseSynthesizer):
             # Find the GQT column
             gqt_col = f'{original_col}_gqt'
             if gqt_col in encoded_df.columns:
-                decoded_values = encoder_info['encoder'].inverse_transform(
-                    encoded_df[[gqt_col]]
-                ).flatten()
+                # Create a DataFrame with the original column name for the scaler
+                temp_df = pd.DataFrame({original_col: encoded_df[gqt_col]})
+                decoded_values = encoder_info['encoder'].inverse_transform(temp_df).flatten()
                 decoded_df[original_col] = decoded_values
         
         elif encoder_info['type'] == 'label':
@@ -188,11 +192,35 @@ class TabDDPM(BaseSynthesizer):
     
     return decoded_df
 
+  def fit(self, data, batch_size=32):
+    """Public fit method that calls the base class train method
+
+    Args:
+        data: pandas DataFrame or torch DataLoader
+        batch_size: batch size for DataLoader creation when input is DataFrame
+    """
+    self.train(data, batch_size)
+
+  def sample(self, n, return_dataframe=False):
+    """Public sample method that calls the base class generate method
+
+    Args:
+        n: number of samples to generate
+        return_dataframe: whether to return DataFrame (True) or tensor (False)
+    """
+    if return_dataframe:
+        # Generate tensor samples and decode to DataFrame
+        samples_tensor = self.generate(n)
+        return self.decode_samples(samples_tensor)
+    else:
+        # Return raw tensor samples
+        return self.generate(n)
+
   def _train(self, train_loader):
     # Setup column info if not already done (for DataFrame input)
     if not self.num_cols and not self.ord_cols:
         self._setup_column_info()
-    
+
     self.diffusion_fn, self.ema_model, self.empirical_class_dist = train(train_loader,
     self.data_info,
     self.target,

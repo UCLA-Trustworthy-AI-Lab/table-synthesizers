@@ -24,29 +24,33 @@ class CARTSynthesizer(BaseSynthesizer):
         self.numeric_cols = []
         self.categorical_cols = []
         
+    def fit(self, data, batch_size=32):
+        """Public fit method that calls train method."""
+        self.train(data, batch_size)
+
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("CARTSynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         # Store original data and create encoded version for training
         self.original_data = train_data.copy()
         self.trained_data = self._encode_categorical_data(train_data)
-        
+
         # Determine numeric and categorical columns from original data
         for col in self.original_data.columns:
             if pd.api.types.is_numeric_dtype(self.original_data[col]):
                 self.numeric_cols.append(col)
             else:
                 self.categorical_cols.append(col)
-        
+
         print(f"CART: stored {len(self.trained_data)} training samples")
         print(f"Numeric columns: {self.numeric_cols}")
         print(f"Categorical columns: {self.categorical_cols}")
-        
+
         self.stop_threading()
         
     def _encode_categorical_data(self, df):
@@ -90,14 +94,15 @@ class CARTSynthesizer(BaseSynthesizer):
         """Generate synthetic samples."""
         if n is None:
             n = len(self.trained_data) if self.trained_data is not None else 100
-        
+
         synthetic_df = self._generate(n)
-        
+
         if return_dataframe:
             return synthetic_df
         else:
-            # Convert to tensor format for compatibility
-            return torch.tensor(synthetic_df.values, dtype=torch.float32)
+            # Convert to tensor format for compatibility - encode categorical columns first
+            encoded_df = self._encode_categorical_data(synthetic_df)
+            return torch.tensor(encoded_df.values, dtype=torch.float32)
     
     def generate(self, n_samples, condition=None):
         """Generate synthetic samples - called by TableSynthesizer.sample()."""

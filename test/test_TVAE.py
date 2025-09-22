@@ -50,7 +50,7 @@ def test_TVAE_sampling(data):
 
 def test_TVAE_dataframe_support(data):
     """Test TVAE with DataFrame input using shared utility"""
-    from dataframe_test_utils import test_dataframe_support
+    from utils import test_dataframe_support
     
     config = {"epochs": 1, "batch_size": 32, "embedding_dim": 64, "compress_dims": (64, 32), "decompress_dims": (32, 64)}
     test_dataframe_support('TVAE', config, n_samples=10)

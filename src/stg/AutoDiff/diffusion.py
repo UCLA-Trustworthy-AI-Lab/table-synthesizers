@@ -10,8 +10,8 @@ from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
 import tqdm
 
-device = 'cuda'  #@param ['cuda', 'cpu'] {'type':'string'}
-torch.cuda.empty_cache()
+# device = 'cuda'  #@param ['cuda', 'cpu'] {'type':'string'}  # Commented out - device should be passed as parameter
+# torch.cuda.empty_cache()  # Don't automatically empty cache
 
 # f(x,t)
 def drift_coeff(x, t, beta_1, beta_0):

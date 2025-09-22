@@ -26,30 +26,34 @@ class SMOTESynthesizer(BaseSynthesizer):
         self.random_state = random_state
         self.stored_data = None
         
+    def fit(self, data):
+        """Sklearn-style fit method."""
+        self.train(data)
+
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("SMOTESynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         self.stored_data = train_data.copy()
-        
+
         # Auto-detect target column if not specified (use last column)
         if self.target_column is None:
             self.target_column = self.stored_data.columns[-1]
-        
+
         # Auto-detect categorical features if not specified
         if self.categorical_features is None:
-            self.categorical_features = [col for col in self.stored_data.columns 
-                                       if col != self.target_column and 
+            self.categorical_features = [col for col in self.stored_data.columns
+                                       if col != self.target_column and
                                        not pd.api.types.is_numeric_dtype(self.stored_data[col])]
-        
+
         print(f"SMOTE: stored {len(self.stored_data)} training samples")
         print(f"Target column: {self.target_column}")
         print(f"Categorical features: {self.categorical_features}")
-        
+
         self.stop_threading()
     
     def _train(self, train_data):
@@ -101,14 +105,15 @@ class SMOTESynthesizer(BaseSynthesizer):
         """Generate synthetic samples."""
         if n is None:
             n = len(self.stored_data) if self.stored_data is not None else 100
-        
+
         synthetic_df = self._generate(n)
-        
+
         if return_dataframe:
             return synthetic_df
         else:
-            # Convert to tensor format for compatibility
-            return torch.tensor(synthetic_df.values, dtype=torch.float32)
+            # Convert to tensor format for compatibility - encode categorical columns first
+            encoded_df = self._encode_for_tensor(synthetic_df)
+            return torch.tensor(encoded_df.values, dtype=torch.float32)
     
     def generate(self, n_samples, condition=None):
         """Generate synthetic samples - called by TableSynthesizer.sample()."""

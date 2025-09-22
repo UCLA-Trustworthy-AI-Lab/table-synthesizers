@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 
 from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
+from utils import run_sandbox_dataset_test
 
 @pytest.fixture
 def data():
@@ -34,10 +35,30 @@ def test_CTGAN(data):
 
 def test_CTGAN_dataframe_support(data):
     """Test CTGAN with DataFrame input using shared utility"""
-    from dataframe_test_utils import test_dataframe_support
+    from utils import test_dataframe_support
     
     config = {"epochs": 2, "batch_size": 32, "embedding_dim": 64, "pac": 1}  # Use pac=1 for simplicity
     test_dataframe_support('CTGAN', config, n_samples=10)
 
+
+def test_PATECTGAN_sandbox_insurance():
+    """Test PATECTGAN on insurance dataset (CTGAN not available, using PATECTGAN instead)"""
+    run_sandbox_dataset_test('PATECTGAN', 'insurance', n_samples=50, sample_ratio=0.1)
+
+
+def test_PATECTGAN_sandbox_adult():
+    """Test PATECTGAN on adult dataset (CTGAN not available, using PATECTGAN instead)"""
+    run_sandbox_dataset_test('PATECTGAN', 'adult', n_samples=50, sample_ratio=0.05)
+
+
+def test_PATECTGAN_sandbox_covtype():
+    """Test PATECTGAN on covtype dataset (CTGAN not available, using PATECTGAN instead)"""
+    run_sandbox_dataset_test('PATECTGAN', 'covtype', n_samples=50, sample_ratio=0.01)
+
 if __name__ == "__main__":
     test_CTGAN(load_and_process_data())
+    
+    # Test sandbox datasets with PATECTGAN (CTGAN replacement)
+    test_PATECTGAN_sandbox_insurance()
+    test_PATECTGAN_sandbox_adult()
+    test_PATECTGAN_sandbox_covtype()

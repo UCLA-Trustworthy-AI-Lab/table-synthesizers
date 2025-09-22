@@ -15,12 +15,12 @@ class Identity(BaseSynthesizer):
 
     def _generate(self, n, condition=None):
         all_data = []
-    
+
         # Collect all training data from DataLoader
         for batch in self.train_data:
             all_data.append(batch)
         all_data = torch.cat(all_data, dim=0)
-        
+
         if self.bootstrap:
             # If bootstrap is True, sample with replacement from the observations
             indices = torch.randint(0, all_data.size(0), (n,))
@@ -40,3 +40,15 @@ class Identity(BaseSynthesizer):
                     repeats = (n + all_data.size(0) - 1) // all_data.size(0)
                     repeated_data = all_data.repeat(repeats, 1)
                     return repeated_data[:n]
+
+    def fit(self, data):
+        """Fit method for sklearn-style interface."""
+        self.train(data)
+
+    def sample(self, n_samples, return_dataframe=False):
+        """Sample method for sklearn-style interface."""
+        synth_data = self._generate(n_samples)
+
+        if return_dataframe and hasattr(self, 'decode_samples'):
+            return self.decode_samples(synth_data)
+        return synth_data

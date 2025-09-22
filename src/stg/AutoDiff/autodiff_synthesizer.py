@@ -34,7 +34,16 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         super().__init__(data_info=data_info, **kwargs)
         
-        # AutoDiff parameters
+        # Extract and use config parameters if provided
+        # Support both 'epochs' and 'n_epochs' for compatibility
+        if 'epochs' in kwargs:
+            n_epochs = kwargs['epochs']
+        if 'diff_n_epochs' in kwargs:
+            diff_n_epochs = kwargs['diff_n_epochs']
+        if 'batch_size' in kwargs:
+            batch_size = kwargs['batch_size']
+            
+        # AutoDiff parameters with config override support
         self.threshold = threshold
         self.n_epochs = n_epochs
         self.lr = lr
@@ -50,7 +59,11 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         self.ds = None  # (decoder, latent_features, mu, logvar)
         self.score = None
         self.stored_data = None
-        
+
+    def fit(self, data):
+        """Sklearn-style fit method."""
+        self.train(data)
+
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):
@@ -63,8 +76,18 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         print(f"AutoDiff: training on {len(self.stored_data)} samples")
         
-        # Set device
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # Set device using base class with fallback for CUDA issues
+        try:
+            self.set_device()
+            device = self.device
+        except Exception as e:
+            if "CUDA" in str(e):
+                print(f"Warning: CUDA not available ({e}), falling back to CPU")
+                import torch
+                self.device = torch.device('cpu')
+                device = self.device
+            else:
+                raise
         
         # AutoDiff parameters
         eps = 1e-5
@@ -116,7 +139,7 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         if self.ds is None or self.score is None:
             raise RuntimeError("Model must be trained before generating samples")
         
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = self.device
         
         latent_features = self.ds[1].detach()
         

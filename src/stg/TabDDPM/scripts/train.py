@@ -86,7 +86,9 @@ def process_encoded_table(tensor, data_info, target):
     return X_features, out_dict
 
 class Trainer:
-    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, data_info, target, device=torch.device('cuda:1')):
+    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, data_info, target, device=None):
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.diffusion = diffusion
         self.ema_model = deepcopy(self.diffusion._denoise_fn)
         for param in self.ema_model.parameters():
@@ -170,7 +172,7 @@ def train(
     num_timesteps = 1000,
     gaussian_loss_type = 'mse',
     scheduler = 'cosine',
-    device = torch.device('cuda:1'),
+    device = None,
     seed = 0,
 ):
     """
@@ -179,6 +181,9 @@ def train(
     #parent_dir = os.path.normpath(parent_dir)
 
     zero.improve_reproducibility(seed)
+    
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     category_sizes = []
     num_dtypes = ['numerical', 'ordinal','continuous', 'datetime']
@@ -188,7 +193,9 @@ def train(
         if info['original_dtype'] in num_dtypes:
             num_numerical_features += 1
         else:
-            category_sizes.append(len(info['empirical_dist']))
+            # Only add to category_sizes if it's not the target column
+            if i != len(data_info['transform_info']) - 1:  # Not the last column (target)
+                category_sizes.append(len(info['empirical_dist']))
         if i == len(data_info['transform_info']) - 1 and target is None:
             target = column
         if target == column:
