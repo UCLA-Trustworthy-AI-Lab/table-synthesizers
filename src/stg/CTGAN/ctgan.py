@@ -228,7 +228,7 @@ class CTGAN(BaseSynthesizer):
 
   def generate(self, n, condition_column=None, condition_value=None):
         """
-        Sample data similar to the training data.
+        Sample data similar to the training dfata.
         Choosing a condition_column and condition_value will increase the probability of the
         discrete condition_value happening in the condition_column.
 
@@ -476,3 +476,31 @@ class CTGAN(BaseSynthesizer):
         loss = torch.stack(loss, dim=1)
 
         return (loss * m).sum() / data.size()[0]
+
+  def fit(self, data):
+      """Fit method for sklearn-style interface."""
+      self.train(data)
+
+  def sample(self, n_samples, return_dataframe=False):
+      """Sample method for sklearn-style interface."""
+      synth_data = self.generate(n_samples)
+
+      if return_dataframe and hasattr(self, 'decode_samples'):
+          return self.decode_samples(synth_data)
+
+      return synth_data
+
+  def decode_samples(self, samples):
+    """Decode generated samples back to original DataFrame format"""
+    if isinstance(samples, torch.Tensor):
+        samples = samples.detach().cpu().numpy()
+
+    # CTGAN uses its own transformer system, so we need to handle decoding differently
+    # For now, return a basic DataFrame with generic column names
+    # This is a simplified approach - ideally we'd implement full CTGAN reverse transformation
+
+    # Generate column names based on the number of features
+    n_features = samples.shape[1]
+    column_names = [f'feature_{i}' for i in range(n_features)]
+
+    return pd.DataFrame(samples, columns=column_names)

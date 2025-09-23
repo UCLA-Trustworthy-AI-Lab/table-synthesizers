@@ -19,8 +19,21 @@ import numpy as np
 import tomli
 import tomli_w
 import torch
-import zero
 import typing as ty
+# Apply zero workaround for TabSyn subprocess
+try:
+    # Try to import the workaround from the parent package
+    import sys
+    import os
+    # Add the parent stg directory to path
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    import stg.zero_workaround as zero
+    sys.modules['zero'] = zero
+except ImportError:
+    # Fallback to regular zero import if workaround not available
+    import zero
 
 from . import env
 

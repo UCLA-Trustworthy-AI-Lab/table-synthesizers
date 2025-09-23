@@ -1,6 +1,9 @@
 import torch
 import numpy as np
-import zero
+import sys
+# Apply zero workaround
+import stg.zero_workaround as zero
+sys.modules['zero'] = zero
 from ..tab_ddpm.gaussian_multinomial_diffsuion import GaussianMultinomialDiffusion
 from .utils_train import get_model
 

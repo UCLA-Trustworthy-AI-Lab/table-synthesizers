@@ -20,11 +20,13 @@ import argparse
 from datetime import datetime
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
 
 def apply_zero_workaround():
     """Apply the zero workaround"""
-    import zero_workaround as zero
+    import stg.zero_workaround as zero
     sys.modules['zero'] = zero
     return zero
 
@@ -250,7 +252,8 @@ def test_all_models(mode='comprehensive', specific_model=None, timeout=300):
 
         # Filter for specific model if requested
         if specific_model:
-            if specific_model in available_models:
+            # If testing a specific model, allow it even if it's in skip_models
+            if specific_model in DEFAULT_MODELS.keys():
                 available_models = [specific_model]
                 print(f"✅ Testing specific model: {specific_model}")
             else:
@@ -277,8 +280,8 @@ def test_all_models(mode='comprehensive', specific_model=None, timeout=300):
         model_configs = {
             'TVAE': {'epochs': 1, 'batch_size': 16},
             'TabDDPM': {'epochs': 1, 'num_timesteps': 50},
-            'CTGAN': {'epochs': 1, 'batch_size': 16},
-            'PATECTGAN': {'epochs': 1, 'batch_size': 16, 'epsilon': 0.1, 'teacher_iters': 1, 'student_iters': 1},
+            'CTGAN': {'epochs': 1, 'batch_size': 20, 'pac': 5},
+            'PATECTGAN': {'epochs': 1, 'batch_size': 20, 'pac': 5, 'epsilon': 0.1, 'teacher_iters': 1, 'student_iters': 1},
             'LTM_VAE': {'model_type': 'vae', 'config_task': 'quick_test'},
             'AutoDiff': {'epochs': 1},
             'TabSyn': {'epochs': 1, 'batch_size': 16}
@@ -287,8 +290,8 @@ def test_all_models(mode='comprehensive', specific_model=None, timeout=300):
         model_configs = {
             'TVAE': {'epochs': 2, 'batch_size': 32},
             'TabDDPM': {'epochs': 1, 'num_timesteps': 100},
-            'CTGAN': {'epochs': 2, 'batch_size': 32},
-            'PATECTGAN': {'epochs': 2, 'batch_size': 32, 'epsilon': 0.3, 'teacher_iters': 2, 'student_iters': 2},
+            'CTGAN': {'epochs': 2, 'batch_size': 30, 'pac': 5},
+            'PATECTGAN': {'epochs': 2, 'batch_size': 30, 'pac': 5, 'epsilon': 0.3, 'teacher_iters': 2, 'student_iters': 2},
             'LTM_VAE': {'model_type': 'vae', 'config_task': 'quick_test'},
             'AutoDiff': {'epochs': 1},
             'TabSyn': {'epochs': 1, 'batch_size': 32}
@@ -297,8 +300,8 @@ def test_all_models(mode='comprehensive', specific_model=None, timeout=300):
         model_configs = {
             'TVAE': {'epochs': 10, 'batch_size': 32},
             'TabDDPM': {'epochs': 5, 'num_timesteps': 200},
-            'CTGAN': {'epochs': 10, 'batch_size': 32},
-            'PATECTGAN': {'epochs': 10, 'batch_size': 32, 'epsilon': 1.0, 'teacher_iters': 3, 'student_iters': 3},
+            'CTGAN': {'epochs': 10, 'batch_size': 30, 'pac': 5},
+            'PATECTGAN': {'epochs': 10, 'batch_size': 30, 'pac': 5, 'epsilon': 1.0, 'teacher_iters': 3, 'student_iters': 3},
             'LTM_VAE': {'model_type': 'vae', 'config_task': 'production_vae'},
             'AutoDiff': {'epochs': 5},
             'TabSyn': {'epochs': 5, 'batch_size': 32}

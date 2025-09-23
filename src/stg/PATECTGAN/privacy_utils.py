@@ -13,12 +13,19 @@ def pate(data, teachers, lap_scale, device="cpu"):
     """PATE implementation for GANs.
     """
     num_teachers = len(teachers)
-    labels = torch.Tensor(num_teachers, data.shape[0]).type(torch.int64).to(device)
+    # First check the actual output shape to determine proper label tensor size
+    with torch.no_grad():
+        sample_output = teachers[0](data)
+        actual_output_size = sample_output.shape[0]
+
+    labels = torch.Tensor(num_teachers, actual_output_size).type(torch.int64).to(device)
     for i in range(num_teachers):
         output = teachers[i](data)
         pred = (output > 0.5).type(torch.Tensor).squeeze().to(device)
-        # print(pred.shape)
-        # print(labels[i].shape)
+        # Ensure pred matches the expected size
+        if pred.numel() != actual_output_size:
+            # If shapes don't match, expand pred to match data.shape[0] by repeating
+            pred = pred.repeat(data.shape[0] // pred.numel())[:data.shape[0]]
         labels[i] = pred
 
     votes = torch.sum(labels, dim=0).unsqueeze(1).type(torch.DoubleTensor).to(device)

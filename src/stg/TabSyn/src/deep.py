@@ -7,8 +7,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import zero
 from torch import Tensor
+# Apply zero workaround for TabSyn subprocess
+try:
+    # Try to import the workaround from the parent package
+    import sys
+    import os
+    # Add the parent stg directory to path
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    import stg.zero_workaround as zero
+    sys.modules['zero'] = zero
+except ImportError:
+    # Fallback to regular zero import if workaround not available
+    import zero
 
 from .util import TaskType
 

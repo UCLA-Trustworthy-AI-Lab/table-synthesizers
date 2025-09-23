@@ -54,6 +54,7 @@ class MySMOTENC(SMOTENC):
         sampling_strategy="auto",
         random_state=None,
         k_neighbors: int = 3,
+        n_jobs=None,
     ):
         # Filter out n_jobs parameter for compatibility with newer imbalanced-learn versions
         super().__init__(
