@@ -1,8 +1,31 @@
 import numpy as np
 import os
 
-from . import src as tsrc
 from torch.utils.data import Dataset
+
+# Fix relative import issue for subprocess execution
+try:
+    from . import src as tsrc
+except ImportError:
+    # When running as subprocess, try different import paths
+    import sys
+    # Add TabSyn directory to path for subprocess execution
+    current_dir = os.path.dirname(__file__)
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    try:
+        import src as tsrc
+    except ImportError:
+        # Try direct absolute import of the src directory
+        src_path = os.path.join(current_dir, 'src')
+        if os.path.exists(os.path.join(src_path, '__init__.py')):
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("src", os.path.join(src_path, '__init__.py'))
+            tsrc = importlib.util.module_from_spec(spec)
+            sys.modules["src"] = tsrc
+            spec.loader.exec_module(tsrc)
+        else:
+            raise ImportError("Could not find src module in subprocess context")
 
 
 class TabularDataset(Dataset):
