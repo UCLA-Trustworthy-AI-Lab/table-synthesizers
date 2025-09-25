@@ -22,51 +22,43 @@ import torch
 import typing as ty
 # Apply zero workaround for TabSyn subprocess
 try:
-    # Try to import zero from the normal location first
     import zero
 except ImportError:
-    try:
-        # Try to import the workaround from the parent package
-        import sys
-        import os
-        # Add the parent stg directory to path
-        parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        import stg.zero_workaround as zero
-        sys.modules['zero'] = zero
-    except ImportError:
-        # More aggressive path searching for subprocess context
-        current_file = os.path.abspath(__file__)
-        # Go up to table-synthesizers root
-        project_root = current_file
-        for _ in range(10):  # Safety limit
-            project_root = os.path.dirname(project_root)
-            if os.path.exists(os.path.join(project_root, 'src', 'stg', 'zero_workaround.py')):
-                sys.path.insert(0, os.path.join(project_root, 'src'))
-                import stg.zero_workaround as zero
-                sys.modules['zero'] = zero
-                break
-        else:
-            # Final fallback - create minimal zero mock to prevent crash
-            class MockZero:
-                @staticmethod
-                def improve_reproducibility(seed):
-                    import random, numpy as np, torch
-                    random.seed(seed)
-                    np.random.seed(seed)
-                    torch.manual_seed(seed)
+    # Subprocess context: find zero_workaround.py with minimal fallback
+    import sys
+    import os
 
-                class random:
-                    @staticmethod
-                    def get_state():
-                        return {}
-                    @staticmethod
-                    def set_state(state):
-                        pass
-
-            zero = MockZero()
+    # Search project structure for zero_workaround.py
+    current_file = os.path.abspath(__file__)
+    project_root = current_file
+    for _ in range(6):  # Reasonable depth limit
+        project_root = os.path.dirname(project_root)
+        zero_path = os.path.join(project_root, 'src', 'stg', 'zero_workaround.py')
+        if os.path.exists(zero_path):
+            sys.path.insert(0, os.path.join(project_root, 'src'))
+            import stg.zero_workaround as zero
             sys.modules['zero'] = zero
+            break
+    else:
+        # Minimal mock for subprocess compatibility
+        class MockZero:
+            @staticmethod
+            def improve_reproducibility(seed):
+                import random, numpy as np, torch
+                random.seed(seed)
+                np.random.seed(seed)
+                torch.manual_seed(seed)
+
+            class random:
+                @staticmethod
+                def get_state():
+                    return {}
+                @staticmethod
+                def set_state(state):
+                    pass
+
+        zero = MockZero()
+        sys.modules['zero'] = zero
 
 from . import env
 

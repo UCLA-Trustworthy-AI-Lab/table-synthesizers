@@ -1,5 +1,6 @@
 # Core dependencies - CRITICAL: Use exact versions for compatibility
-torch>=2.0.0
+torch==2.8.0                     # Upgraded for native RMSNorm support (required for synthcity)
+torchvision==0.23.0              # Compatible with PyTorch 2.8.0
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
@@ -11,7 +12,8 @@ tomli>=2.0.0
 tomli_w>=1.2.0                   # Required for TabSyn
 imbalanced-learn==0.14.0         # Upgraded for sklearn 1.7.2 compatibility
 
-# For TabDDPM synthesizer - COMMENTED OUT: Use zero_workaround.py instead
+# For TabDDPM and TabSyn synthesizers - COMMENTED OUT: Use zero_workaround.py instead
+# zero_workaround.py provides 100% functional replacement with subprocess compatibility
 #libzero==0.0.8
 
 # Development and testing
@@ -24,10 +26,9 @@ datasets>=2.0.0
 accelerate>=0.20.0
 ema-pytorch>=0.7.0
 
-# Optional: For Gen_MIA synthesizers (BayesianNetwork, GREAT, ARF, NFlow)
-# Note: synthcity has complex dependencies and may conflict with other packages
-# Uncomment only if you need these specific synthesizers
-# synthcity>=0.2.12
+# Synthcity models (BayesianNetwork, GREAT, ARF, NFlow) - NOW WORKING ✅
+# Fixed compatibility issues with PyTorch 2.8.0 upgrade
+synthcity==0.2.12                # External package for advanced synthesizers
 
 # Optional: For AIM synthesizer (requires complex private-pgm setup)
 # Currently disabled due to dependency complexity

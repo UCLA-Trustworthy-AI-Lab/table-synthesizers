@@ -18,27 +18,20 @@ from .model import Model_VAE, Encoder_model, Decoder_model
 try:
     from ...utils_train import preprocess, TabularDataset
 except ImportError:
-    # When running as subprocess, try different import paths
-    import sys
+    # Subprocess context: load utils_train module directly
     import os
-    # Add TabSyn directory to path for subprocess execution
+    import importlib.util
     tabsyn_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    if tabsyn_dir not in sys.path:
-        sys.path.insert(0, tabsyn_dir)
-    try:
+    utils_train_path = os.path.join(tabsyn_dir, 'utils_train.py')
+    if os.path.exists(utils_train_path):
+        spec = importlib.util.spec_from_file_location("utils_train", utils_train_path)
+        utils_train_module = importlib.util.module_from_spec(spec)
+        import sys
+        sys.modules["utils_train"] = utils_train_module
+        spec.loader.exec_module(utils_train_module)
         from utils_train import preprocess, TabularDataset
-    except ImportError:
-        # Try direct absolute import without package context
-        utils_train_path = os.path.join(tabsyn_dir, 'utils_train.py')
-        if os.path.exists(utils_train_path):
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("utils_train", utils_train_path)
-            utils_train_module = importlib.util.module_from_spec(spec)
-            sys.modules["utils_train"] = utils_train_module
-            spec.loader.exec_module(utils_train_module)
-            from utils_train import preprocess, TabularDataset
-        else:
-            raise ImportError("Could not find utils_train module in subprocess context")
+    else:
+        raise ImportError("Could not find utils_train module in subprocess context")
 
 warnings.filterwarnings('ignore')
 
