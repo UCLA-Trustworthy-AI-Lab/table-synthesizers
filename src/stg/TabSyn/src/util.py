@@ -19,8 +19,46 @@ import numpy as np
 import tomli
 import tomli_w
 import torch
-import zero
 import typing as ty
+# Apply zero workaround for TabSyn subprocess
+try:
+    import zero
+except ImportError:
+    # Subprocess context: find zero_workaround.py with minimal fallback
+    import sys
+    import os
+
+    # Search project structure for zero_workaround.py
+    current_file = os.path.abspath(__file__)
+    project_root = current_file
+    for _ in range(6):  # Reasonable depth limit
+        project_root = os.path.dirname(project_root)
+        zero_path = os.path.join(project_root, 'src', 'stg', 'zero_workaround.py')
+        if os.path.exists(zero_path):
+            sys.path.insert(0, os.path.join(project_root, 'src'))
+            import stg.zero_workaround as zero
+            sys.modules['zero'] = zero
+            break
+    else:
+        # Minimal mock for subprocess compatibility
+        class MockZero:
+            @staticmethod
+            def improve_reproducibility(seed):
+                import random, numpy as np, torch
+                random.seed(seed)
+                np.random.seed(seed)
+                torch.manual_seed(seed)
+
+            class random:
+                @staticmethod
+                def get_state():
+                    return {}
+                @staticmethod
+                def set_state(state):
+                    pass
+
+        zero = MockZero()
+        sys.modules['zero'] = zero
 
 from . import env
 

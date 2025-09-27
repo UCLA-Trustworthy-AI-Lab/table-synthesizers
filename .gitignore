@@ -12,6 +12,11 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+# Input preprocessed datasets
+datasets/
+
+# Output training datasets
+outputs/
 
 presentation/*
 
@@ -42,6 +47,13 @@ src/stg/TabSyn/data/test_tabsyn_df/*
 *.pt
 src/stg/TabSyn/tabsyn/vae/ckpt/*
 src/stg/TabSyn/synthetic/*
+
+
+# csv file
+*.csv
+
+# pth file
+*.pth
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
@@ -194,4 +206,18 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Debug trainer
+debug_trainer/
+
+# Exclude LTM-VAE module until further notice
+src/stg/LTM-VAE/
+src/stg/LTM_VAE.py
+test_ltm_fix_dimension.py
+test_ltm_integration_basic.py
+test_ltm_training_only.py
+test_ltm_vae_final.py
+test_ltm_vae_integration.py
+LTM_VAE_INTEGRATION_STATUS.md
+
 CLAUDE.md
+example/sandbox/*.csv

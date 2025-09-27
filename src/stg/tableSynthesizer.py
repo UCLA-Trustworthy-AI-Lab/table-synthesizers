@@ -70,8 +70,16 @@ except ImportError:
     TABSYN_AVAILABLE = False
     logging.getLogger(__name__).warning("TabSyn not available due to missing dependencies")
 
+try:
+    from .LTM_VAE import LTMVAESynthesizer
+    LTM_VAE_AVAILABLE = True
+except ImportError:
+    LTM_VAE_AVAILABLE = False
+    print("Warning: LTM-VAE not available due to missing dependencies")
+
 import numpy as np
 import torch
+
 
 DEFAULT_MODELS = {"Identity":Identity,
                   "CTGAN":CTGAN,
@@ -107,24 +115,27 @@ if AUTODIFF_AVAILABLE:
 if TABSYN_AVAILABLE:
     DEFAULT_MODELS["TabSyn"] = TabSynSynthesizer
 
+if LTM_VAE_AVAILABLE:
+    DEFAULT_MODELS["LTM_VAE"] = LTMVAESynthesizer
+
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
 class TableSynthesizer:
     """
-        TableSynthesizer does the following: 
+        TableSynthesizer does the following:
         1, takes a tensor dataset as input
         2, load column to tensor mapping
         3, initialize synthesizer with configurations
         4, pass tensor and mapping to selected synthesizer.
         5, generate synthetic tensor
-        6, return synthetic tensors to preprocessors. 
+        6, return synthetic tensors to preprocessors.
     """
 
     _DEFAULT_MODELS = DEFAULT_MODELS
     _VALID_DTYPES = VALID_DTYPES
     def __init__(self, model, config=None, data_info=None, **kwarg):
         """
-        An interface that allows the construction and selection of different synthesizers. It reduces the need for changing the code each time we want to run a different synthesizer. 
+        An interface that allows the construction and selection of different synthesizers. It reduces the need for changing the code each time we want to run a different synthesizer.
 
         Args:
             model (str or BaseSynthesizer): choice of synthesizer model name or instance.

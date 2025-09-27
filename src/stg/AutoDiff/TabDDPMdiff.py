@@ -14,6 +14,14 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import OneCycleLR
 from scipy import integrate
 
+# Device selection with fallback
+if torch.cuda.is_available():
+    device = 'cuda'
+    torch.cuda.empty_cache()
+else:
+    device = 'cpu'
+    print("Warning: CUDA not available, using CPU")
+
 def _as_t_on(x_or_device, t):
     if isinstance(x_or_device, torch.Tensor):
         dev = x_or_device.device
@@ -355,7 +363,10 @@ def train_diffusion(latent_features, T, eps, sigma, lr, \
                     num_batches_per_epoch, maximum_learning_rate, weight_decay, n_epochs, batch_size, device=None):
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
+    # Ensure batch_size doesn't exceed dataset size
+    batch_size = min(batch_size, latent_features.shape[0])
+
     rtdl_params={
         'd_in': latent_features.shape[1],
         'd_layers': [256,256],

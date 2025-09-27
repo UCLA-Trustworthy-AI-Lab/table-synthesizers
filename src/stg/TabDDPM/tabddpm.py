@@ -192,11 +192,35 @@ class TabDDPM(BaseSynthesizer):
     
     return decoded_df
 
+  def fit(self, data, batch_size=32):
+    """Public fit method that calls the base class train method
+
+    Args:
+        data: pandas DataFrame or torch DataLoader
+        batch_size: batch size for DataLoader creation when input is DataFrame
+    """
+    self.train(data, batch_size)
+
+  def sample(self, n, return_dataframe=False):
+    """Public sample method that calls the base class generate method
+
+    Args:
+        n: number of samples to generate
+        return_dataframe: whether to return DataFrame (True) or tensor (False)
+    """
+    if return_dataframe:
+        # Generate tensor samples and decode to DataFrame
+        samples_tensor = self.generate(n)
+        return self.decode_samples(samples_tensor)
+    else:
+        # Return raw tensor samples
+        return self.generate(n)
+
   def _train(self, train_loader):
     # Setup column info if not already done (for DataFrame input)
     if not self.num_cols and not self.ord_cols:
         self._setup_column_info()
-    
+
     self.diffusion_fn, self.ema_model, self.empirical_class_dist = train(train_loader,
     self.data_info,
     self.target,

@@ -120,6 +120,24 @@ class AIM(Mechanism, BaseSynthesizer):
         self.model = None
         self.synthetic_data = None
 
+    def fit(self, data, batch_size=32):
+        """Public fit method that calls the base class train method."""
+        self.train(data, batch_size)
+
+    def sample(self, n, return_dataframe=False):
+        """Public sample method that calls the base class generate method."""
+        samples = self.generate(n)
+        if return_dataframe:
+            # Convert tensor to DataFrame if needed
+            if isinstance(samples, torch.Tensor):
+                # Create basic DataFrame from tensor
+                num_cols = samples.shape[1]
+                columns = [f'col_{i}' for i in range(num_cols)]
+                return pd.DataFrame(samples.detach().cpu().numpy(), columns=columns)
+            return samples
+        else:
+            return samples
+
     def _train(self, train_dataloader):
         """Train the AIM model using tensor data from dataloader"""
         st = time.time()

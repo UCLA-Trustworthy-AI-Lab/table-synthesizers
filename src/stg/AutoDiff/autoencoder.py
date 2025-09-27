@@ -158,7 +158,8 @@ def train_autoencoder(df, hidden_size, num_layers, lr, weight_decay, n_epochs, b
     tqdm_epoch = tqdm.tqdm(range(n_epochs))
 
     losses = []
-    batch_size
+    # Ensure batch_size doesn't exceed dataset size
+    batch_size = min(batch_size, data.shape[0])
     all_indices = list(range(data.shape[0]))
 
     for epoch in tqdm_epoch:

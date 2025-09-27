@@ -142,9 +142,14 @@ class TVAE(BaseSynthesizer):
     self._epochs = epochs
     
     # Set device - use base class method
+    self.set_device()
+    if not cuda or not torch.cuda.is_available():
+        self.set_device(torch.device("cpu"))
+    else:
+        self.set_device(torch.device("cuda"))
     # Normalize device selection once, respecting `cuda` flag
-    desired_device = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
-    self.set_device(desired_device)
+    # desired_device = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
+    # self.set_device(desired_device)
         
     # Initialize transformer if data_info is provided
     if data_info is not None:
@@ -256,8 +261,21 @@ class TVAE(BaseSynthesizer):
             list(self.encoder.parameters()) + list(self.decoder.parameters()),
             weight_decay=self.l2scale)
       
-      self.encoder.load_state_dict(state['encoder']) 
-      self.decoder.load_state_dict(state['decoder']) 
-      self.optimizerAE.load_state_dict(state['optimizerAE']) 
-      
+      self.encoder.load_state_dict(state['encoder'])
+      self.decoder.load_state_dict(state['decoder'])
+      self.optimizerAE.load_state_dict(state['optimizerAE'])
+
       self.model_loaded = True
+
+  def fit(self, data):
+      """Fit method for sklearn-style interface."""
+      self.train(data)
+
+  def sample(self, n_samples, return_dataframe=False):
+      """Sample method for sklearn-style interface."""
+      synth_data = self.generate(n_samples)
+
+      if return_dataframe and hasattr(self, 'decode_samples'):
+          return self.decode_samples(synth_data)
+
+      return synth_data

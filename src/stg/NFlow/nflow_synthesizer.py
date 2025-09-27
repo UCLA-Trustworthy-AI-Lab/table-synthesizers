@@ -29,7 +29,11 @@ class NFlowSynthesizer(BaseSynthesizer):
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
-        
+
+    def fit(self, data):
+        """Sklearn-style fit method."""
+        self.train(data)
+
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):

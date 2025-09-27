@@ -134,7 +134,10 @@ class TabNetwork(nn.Module):
     
 def train_diffusion(latent_features, T, hidden_dims, converted_table_dim, eps, sigma, lr, \
                     num_batches_per_epoch, maximum_learning_rate, weight_decay, n_epochs, batch_size):
-    
+
+    # Ensure batch_size doesn't exceed dataset size
+    batch_size = min(batch_size, latent_features.shape[0])
+
     ScoreNet = TabNetwork(hidden_dims, converted_table_dim) # Stasy Architecture
     ScoreNet_Parallel = torch.nn.DataParallel(ScoreNet)
     ScoreNet_Parallel = ScoreNet_Parallel.to(device)

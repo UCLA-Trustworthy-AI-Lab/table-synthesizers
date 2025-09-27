@@ -3,8 +3,26 @@ import json
 import numpy as np
 import pandas as pd
 import torch
-from ..utils_train import preprocess
-from .vae.model import Decoder_model 
+from .vae.model import Decoder_model
+
+# Fix relative import issue for subprocess execution
+try:
+    from ..utils_train import preprocess
+except ImportError:
+    # Subprocess context: load utils_train module directly
+    import os
+    import importlib.util
+    tabsyn_dir = os.path.dirname(os.path.dirname(__file__))
+    utils_train_path = os.path.join(tabsyn_dir, 'utils_train.py')
+    if os.path.exists(utils_train_path):
+        spec = importlib.util.spec_from_file_location("utils_train", utils_train_path)
+        utils_train_module = importlib.util.module_from_spec(spec)
+        import sys
+        sys.modules["utils_train"] = utils_train_module
+        spec.loader.exec_module(utils_train_module)
+        from utils_train import preprocess
+    else:
+        raise ImportError("Could not find utils_train module in subprocess context") 
 
 def get_input_train(args):
     dataname = args.dataname

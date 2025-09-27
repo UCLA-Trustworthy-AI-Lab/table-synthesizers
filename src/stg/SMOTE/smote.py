@@ -39,6 +39,7 @@ class MySMOTE(SMOTE):
         steps = step_size * random_state.uniform(low=self.lam1, high=self.lam2, size=n_samples)[:, np.newaxis]
         rows = np.floor_divide(samples_indices, nn_num.shape[1])
         cols = np.mod(samples_indices, nn_num.shape[1])
+        # Pass y_type parameter for compatibility with newer imbalanced-learn versions
         X_new = self._generate_samples(X, nn_data, nn_num, rows, cols, steps, y_type)
         y_new = np.full(n_samples, fill_value=y_type, dtype=y_dtype)
         return X_new, y_new
@@ -53,7 +54,9 @@ class MySMOTENC(SMOTENC):
         sampling_strategy="auto",
         random_state=None,
         k_neighbors: int = 3,
+        n_jobs=None,
     ):
+        # Filter out n_jobs parameter for compatibility with newer imbalanced-learn versions
         super().__init__(
             categorical_features=categorical_features,
             sampling_strategy=sampling_strategy,
@@ -62,6 +65,8 @@ class MySMOTENC(SMOTENC):
         )
         self.lam1 = lam1
         self.lam2 = lam2
+        # Set n_jobs manually for backward compatibility (even though it's not used in newer versions)
+        self.n_jobs = n_jobs
 
     def _make_samples(
         self, X, y_dtype, y_type, nn_data, nn_num, n_samples, step_size=1.0
@@ -72,6 +77,7 @@ class MySMOTENC(SMOTENC):
         steps = step_size * random_state.uniform(low=self.lam1, high=self.lam2, size=n_samples)[:, np.newaxis]
         rows = np.floor_divide(samples_indices, nn_num.shape[1])
         cols = np.mod(samples_indices, nn_num.shape[1])
+        # Pass y_type parameter for compatibility with newer imbalanced-learn versions
         X_new = self._generate_samples(X, nn_data, nn_num, rows, cols, steps, y_type)
         y_new = np.full(n_samples, fill_value=y_type, dtype=y_dtype)
         return X_new, y_new

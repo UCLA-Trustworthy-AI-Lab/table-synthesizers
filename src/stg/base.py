@@ -141,30 +141,31 @@ class BaseSynthesizer:
         """Set the `device` to be used ('GPU' or 'CPU)."""
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self._device = self.device  # Also set _device for compatibility
         else:
             self.device = device
-        # Keep alias for compatibility
-        self._device = self.device
-        
+            self._device = device  # Also set _device for compatibility
+  
   def set_seed(self, seed: int = None):
-        """Set random seeds for reproducibility across torch, numpy, and python's random."""
-        if seed is None:
-            return
-        try:
-            random.seed(seed)
-        except Exception:
-            pass
-        try:
-            np.random.seed(seed)
-        except Exception:
-            pass
-        try:
-            torch.manual_seed(seed)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed_all(seed)
-        except Exception:
-            pass
-        
+    """Set random seeds for reproducibility across torch, numpy, and python's random."""
+    if seed is None:
+        return
+    try:
+        random.seed(seed)
+    except Exception:
+        pass
+    try:
+        np.random.seed(seed)
+    except Exception:
+        pass
+    try:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+
+  
   def init_model(self, train_data):
     """Initialize attributes of the synthesizer"""
     pass

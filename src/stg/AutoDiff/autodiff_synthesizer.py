@@ -59,6 +59,19 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         self.ds = None  # (decoder, latent_features, mu, logvar)
         self.score = None
         self.stored_data = None
+
+    def fit(self, data):
+        """Sklearn-style fit method."""
+        self.train(data)
+
+    def train(self, train_data, batch_size=32):
+        """Override base train method to handle DataFrame input directly."""
+        if not isinstance(train_data, pd.DataFrame):
+            raise ValueError("AutoDiffSynthesizer only supports DataFrame input, not DataLoader")
+        
+        # Skip base class conversion and handle DataFrame directly
+        self.start_threading()
+
         
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
@@ -74,9 +87,18 @@ class AutoDiffSynthesizer(BaseSynthesizer):
         
         print(f"AutoDiff: training on {len(self.stored_data)} samples")
         
-        # Set device using base class
-        self.set_device()
-        device = self.device
+        # Set device using base class with fallback for CUDA issues
+        try:
+            self.set_device()
+            device = self.device
+        except Exception as e:
+            if "CUDA" in str(e):
+                print(f"Warning: CUDA not available ({e}), falling back to CPU")
+                import torch
+                self.device = torch.device('cpu')
+                device = self.device
+            else:
+                raise
         
         # AutoDiff parameters
         eps = 1e-5

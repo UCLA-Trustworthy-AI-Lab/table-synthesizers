@@ -2,7 +2,10 @@ from copy import deepcopy
 import torch
 import os
 import numpy as np
-import zero
+import sys
+# Apply zero workaround
+import stg.zero_workaround as zero
+sys.modules['zero'] = zero
 from ..tab_ddpm import GaussianMultinomialDiffusion
 from .utils_train import get_model, update_ema
 import pandas as pd

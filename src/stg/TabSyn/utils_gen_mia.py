@@ -48,7 +48,8 @@ def create_dataset_with_metadata(np_array, dataset_name, task_type="binclass"):
     os.makedirs(data_dir, exist_ok=True)
     
     # Step 4: Save the properly typed DataFrame as a CSV file
-    csv_path = os.path.join(data_dir, f"{dataset_name}.csv")
+    csv_path = f"{data_dir}/{dataset_name}.csv"
+
     df_typed.to_csv(csv_path, index=False, header=True)
     
     # Step 5: Create metadata dictionary
