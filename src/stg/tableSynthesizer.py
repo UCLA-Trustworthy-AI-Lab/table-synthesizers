@@ -75,7 +75,7 @@ try:
     LTM_VAE_AVAILABLE = True
 except ImportError:
     LTM_VAE_AVAILABLE = False
-    print("Warning: LTM-VAE not available due to missing dependencies")
+    logging.getLogger(__name__).warning("LTM-VAE not available due to missing dependencies")
 
 import numpy as np
 import torch

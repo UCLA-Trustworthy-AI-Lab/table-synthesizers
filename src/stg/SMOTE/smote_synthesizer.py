@@ -75,6 +75,10 @@ class SMOTESynthesizer(BaseSynthesizer):
             print(f"Removing {len(rare_categories)} rare categories with < {min_samples_needed} samples")
             data_for_smote = data_for_smote[~data_for_smote[self.target_column].isin(rare_categories)]
         
+        # Detect if target is continuous (regression) or categorical (classification)
+        target_values = data_for_smote[self.target_column]
+        is_regression = pd.api.types.is_numeric_dtype(target_values) and len(target_values.unique()) > 10
+
         # Use the sample_smote function with synthetic mode
         synthetic_df = sample_smote(
             df=data_for_smote,
@@ -83,6 +87,7 @@ class SMOTESynthesizer(BaseSynthesizer):
             eval_type="synthetic",  # Only return synthetic samples
             k_neighbors=self.k_neighbors,
             frac_samples=self.frac_samples,
+            is_regression=is_regression,
             seed=self.random_state if self.random_state is not None else 0,
             n_samples=n_samples
         )
