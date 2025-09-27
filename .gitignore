@@ -12,6 +12,11 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+# Input preprocessed datasets
+datasets/
+
+# Output training datasets
+outputs/
 
 presentation/*
 

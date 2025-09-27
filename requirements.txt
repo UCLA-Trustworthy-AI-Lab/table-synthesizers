@@ -1,6 +1,6 @@
 # Core dependencies - CRITICAL: Use exact versions for compatibility
-torch==2.8.0                     # Upgraded for native RMSNorm support (required for synthcity)
-torchvision==0.23.0              # Compatible with PyTorch 2.8.0
+torch==2.2.2                     # Upgraded for native RMSNorm support (required for synthcity)
+torchvision==0.17.2              # Compatible with PyTorch 2.2.2
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
@@ -29,6 +29,8 @@ ema-pytorch>=0.7.0
 # Synthcity models (BayesianNetwork, GREAT, ARF, NFlow) - NOW WORKING ✅
 # Fixed compatibility issues with PyTorch 2.8.0 upgrade
 synthcity==0.2.12                # External package for advanced synthesizers
+
+seaborn
 
 # Optional: For AIM synthesizer (requires complex private-pgm setup)
 # Currently disabled due to dependency complexity
