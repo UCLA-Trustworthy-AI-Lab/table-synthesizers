@@ -2,7 +2,7 @@
 torch==2.2.2                     # Upgraded for native RMSNorm support (required for synthcity)
 torchvision==0.17.2              # Compatible with PyTorch 2.2.2
 pandas>=2.0.0
-numpy>=1.24.0
+numpy==1.26.0
 scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
 scipy==1.11.4                    # Downgraded for TabSyn _lazywhere compatibility
 
