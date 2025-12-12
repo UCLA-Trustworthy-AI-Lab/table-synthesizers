@@ -12,7 +12,8 @@ from stg.tableSynthesizer import TableSynthesizer
 # Check if ARF is available
 try:
     from stg.tableSynthesizer import DEFAULT_MODELS
-    ARF_AVAILABLE = 'ARF' in DEFAULT_MODELS
+    import importlib.util
+    ARF_AVAILABLE = 'ARF' in DEFAULT_MODELS and importlib.util.find_spec('synthcity') is not None
 except ImportError:
     ARF_AVAILABLE = False
 
@@ -109,8 +110,11 @@ def test_ARF_availability():
 
 
 if __name__ == "__main__":
+    if not ARF_AVAILABLE:
+        print("ARF not available due to missing synthcity dependencies (expected). Skipping tests.")
+        sys.exit(0)
+        
     test_ARF_availability()
-    if ARF_AVAILABLE:
-        test_ARF_initialization()
-        test_ARF_dataframe_support() 
-        test_ARF_different_data_types()
+    test_ARF_initialization()
+    test_ARF_dataframe_support() 
+    test_ARF_different_data_types()

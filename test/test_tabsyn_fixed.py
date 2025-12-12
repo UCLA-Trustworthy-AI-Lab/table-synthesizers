@@ -9,11 +9,11 @@ import pandas as pd
 import numpy as np
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def apply_zero_workaround():
     """Apply the zero workaround"""
-    import zero_workaround as zero
+    import stg.zero_workaround as zero
     sys.modules['zero'] = zero
     return zero
 

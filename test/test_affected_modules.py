@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def apply_zero_workaround():
     """Apply the zero workaround"""
-    import zero_workaround as zero
+    from stg import zero_workaround as zero
     sys.modules['zero'] = zero
     return zero
 

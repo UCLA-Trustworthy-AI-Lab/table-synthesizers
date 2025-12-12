@@ -11,6 +11,7 @@ category_encoders>=2.6.0
 tomli>=2.0.0
 tomli_w>=1.2.0                   # Required for TabSyn
 imbalanced-learn==0.14.0         # Upgraded for sklearn 1.7.2 compatibility
+icecream>=2.1.0                  # Required for TabSyn debugging output
 
 # For TabDDPM and TabSyn synthesizers - COMMENTED OUT: Use zero_workaround.py instead
 # zero_workaround.py provides 100% functional replacement with subprocess compatibility

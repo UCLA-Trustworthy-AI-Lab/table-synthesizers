@@ -22,10 +22,20 @@ presentation/*
 
 core
 
+# AGENTS.md
 AGENTS.md
+
+# CLAUDE.md
+CLAUDE.md
+
+# text files
 *.md
 !README.md
 *.txt
+
+# image
+*.png
+*.jpg
 
 # Ignore virtual environments
 venv/
@@ -219,5 +229,4 @@ test_ltm_vae_final.py
 test_ltm_vae_integration.py
 LTM_VAE_INTEGRATION_STATUS.md
 
-CLAUDE.md
 example/sandbox/*.csv

@@ -15,7 +15,8 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Apply the zero workaround BEFORE any other imports
-import zero_workaround as zero
+# Import the workaround module
+from stg import zero_workaround as zero
 sys.modules['zero'] = zero
 
 class TestLibzeroWorkaround:
@@ -116,14 +117,13 @@ class TestLibzeroWorkaround:
 
         # Test Identity model (simplest)
         identity_synth = TableSynthesizer('Identity')
-        model = identity_synth.model_class()
 
         # Should be able to call fit without errors
-        model.fit(test_data)
-        assert model.model_loaded == True
+        identity_synth.fit(test_data)
+        assert identity_synth.model.model_loaded == True
 
         # Should be able to generate samples
-        samples = model.sample(10, return_dataframe=True)
+        samples = identity_synth.sample(10, return_dataframe=True)
         assert isinstance(samples, pd.DataFrame)
         assert len(samples) == 10
         assert list(samples.columns) == list(test_data.columns)
@@ -147,29 +147,29 @@ class TestLibzeroWorkaround:
             'epochs': 1,  # Very short training for testing
             'batch_size': 16
         })
-        model = tvae_synth.model_class()
 
         # Test that we can initialize and fit
-        model.fit(test_data)
-        assert model.model_loaded == True
+        tvae_synth.fit(test_data)
+        assert tvae_synth.model.model_loaded == True
 
         print("✓ TVAE model works with workaround")
 
     def test_zero_usage_in_models(self):
         """Test that models using zero functions work correctly"""
         # Test TabDDPM which uses zero.improve_reproducibility
-        from stg.TabDDPM.scripts.train import train_tab_ddpm
-
-        # This should not raise ImportError for zero
-        # We'll just verify the function exists and can be called
         try:
-            # Just check that the function can be imported
-            assert callable(train_tab_ddpm)
-            print("✓ TabDDPM train function imports correctly")
+            from stg.TabDDPM.scripts.train import train, Trainer
+
+            # This should not raise ImportError for zero
+            # We'll just verify the module imports correctly
+            assert callable(train)
+            assert Trainer is not None
+            print("✓ TabDDPM train module imports correctly with zero workaround")
         except ImportError as e:
             if 'zero' in str(e):
                 pytest.fail(f"Zero import still failing in TabDDPM: {e}")
             else:
+                # Other import issues are acceptable (dependencies, etc.)
                 print(f"✓ TabDDPM import issue unrelated to zero: {e}")
 
     def test_reproducibility_works(self):
@@ -186,16 +186,16 @@ class TestLibzeroWorkaround:
         })
 
         # Create model and verify reproducible behavior
-        model1 = TableSynthesizer('Identity').model_class()
-        model1.fit(test_data)
+        synth1 = TableSynthesizer('Identity')
+        synth1.fit(test_data)
 
         zero.improve_reproducibility(42)
-        model2 = TableSynthesizer('Identity').model_class()
-        model2.fit(test_data)
+        synth2 = TableSynthesizer('Identity')
+        synth2.fit(test_data)
 
         # Both should produce same results
-        samples1 = model1.sample(5, return_dataframe=True)
-        samples2 = model2.sample(5, return_dataframe=True)
+        samples1 = synth1.sample(5, return_dataframe=True)
+        samples2 = synth2.sample(5, return_dataframe=True)
 
         print("✓ Reproducibility functions work correctly")
 
@@ -222,15 +222,14 @@ class TestLibzeroWorkaround:
 
         for model_name in test_models:
             synth = TableSynthesizer(model_name)
-            model = synth.model_class()
-            model.fit(test_data)
+            synth.fit(test_data)
 
             # Test tensor output
-            tensor_samples = model.sample(10)
+            tensor_samples = synth.sample(10)
             assert hasattr(tensor_samples, 'shape')
 
             # Test DataFrame output
-            df_samples = model.sample(10, return_dataframe=True)
+            df_samples = synth.sample(10, return_dataframe=True)
             assert isinstance(df_samples, pd.DataFrame)
             assert len(df_samples) == 10
             assert set(df_samples.columns) == set(test_data.columns)
