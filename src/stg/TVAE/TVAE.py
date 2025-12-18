@@ -250,8 +250,12 @@ class TVAE(BaseSynthesizer):
       return state
         
   def load_state(self, checkpoint):
-      """Load state from a file path/object"""
-      state = torch.load(checkpoint)
+      """Load state from a file path or dictionary"""
+      # Handle both file paths and pre-loaded dictionaries
+      if isinstance(checkpoint, dict):
+          state = checkpoint
+      else:
+          state = torch.load(checkpoint, weights_only=False)
       
       self._transformer = state['transformer']
       data_dim = self._transformer.output_width

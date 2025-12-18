@@ -580,10 +580,8 @@ class PATECTGAN(BaseSynthesizer):
     def sample(self, n_samples, return_dataframe=False):
         samples = self.generate(n_samples)
         if return_dataframe:
-            # PATECTGAN doesn't have proper DataFrame decoding yet
-            # Return tensor for now - this is a known limitation
-            print("Warning: PATECTGAN DataFrame output not fully implemented, returning tensor")
-            return samples
+            # Use BaseSynthesizer's decode_samples method for DataFrame output
+            return self.decode_samples(samples)
         else:
             return samples
 

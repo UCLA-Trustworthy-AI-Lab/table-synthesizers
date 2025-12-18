@@ -77,6 +77,29 @@ class SimpleDataset:
         ans = np.histogramdd(self.df.values, bins, weights=self.weights)[0]
         return ans.flatten() if flatten else ans
 
+class SimpleModel:
+    def __init__(self, synthetic_df, domain_dict, data_domain=None):
+        self.synthetic_df = synthetic_df
+        self.domain_dict = domain_dict
+        self.domain = data_domain 
+        
+    def synthetic_data(self, rows=None):
+        if rows is None:
+            return SimpleDataset(self.synthetic_df, self.domain_dict)
+        else:
+            # Sample with replacement if needed
+            if rows <= len(self.synthetic_df):
+                sampled = self.synthetic_df.sample(n=rows, replace=False)
+            else:
+                sampled = self.synthetic_df.sample(n=rows, replace=True)
+            return SimpleDataset(sampled, self.domain_dict)
+            
+    def project(self, cols):
+        return self.synthetic_data().project(cols)
+        
+    @property
+    def cliques(self):
+        return [tuple(self.synthetic_df.columns)]
 
 class AIM(Mechanism, BaseSynthesizer):
     """
@@ -128,9 +151,12 @@ class AIM(Mechanism, BaseSynthesizer):
         """Public sample method that calls the base class generate method."""
         samples = self.generate(n)
         if return_dataframe:
-            # Convert tensor to DataFrame if needed
+            # Use BaseSynthesizer's decode_samples if encoders are available
+            if hasattr(self, 'encoders') and hasattr(self, 'feature_names') and self.encoders:
+                return self.decode_samples(samples)
+
+            # Fallback: Convert tensor to DataFrame with generic names
             if isinstance(samples, torch.Tensor):
-                # Create basic DataFrame from tensor
                 num_cols = samples.shape[1]
                 columns = [f'col_{i}' for i in range(num_cols)]
                 return pd.DataFrame(samples.detach().cpu().numpy(), columns=columns)
@@ -186,32 +212,9 @@ class AIM(Mechanism, BaseSynthesizer):
         # Create synthetic data
         synthetic_df = pd.DataFrame(noisy_data, columns=data.df.columns)
         
-        # Simple model that just stores the synthetic data
-        class SimpleModel:
-            def __init__(self, synthetic_df, domain_dict):
-                self.synthetic_df = synthetic_df
-                self.domain_dict = domain_dict
-                self.domain = data.domain
-                
-            def synthetic_data(self, rows=None):
-                if rows is None:
-                    return SimpleDataset(self.synthetic_df, self.domain_dict)
-                else:
-                    # Sample with replacement if needed
-                    if rows <= len(self.synthetic_df):
-                        sampled = self.synthetic_df.sample(n=rows, replace=False)
-                    else:
-                        sampled = self.synthetic_df.sample(n=rows, replace=True)
-                    return SimpleDataset(sampled, self.domain_dict)
-                    
-            def project(self, cols):
-                return self.synthetic_data().project(cols)
-                
-            @property
-            def cliques(self):
-                return [tuple(self.synthetic_df.columns)]
+
         
-        model = SimpleModel(synthetic_df, data.domain_dict)
+        model = SimpleModel(synthetic_df, data.domain_dict, data.domain)
         synth = model.synthetic_data()
         
         return model, synth

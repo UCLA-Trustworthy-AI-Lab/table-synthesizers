@@ -492,12 +492,14 @@ class CTGAN(BaseSynthesizer):
 
   def decode_samples(self, samples):
     """Decode generated samples back to original DataFrame format"""
+    # If BaseSynthesizer's encoders are available, use them for proper decoding
+    if hasattr(self, 'encoders') and hasattr(self, 'feature_names') and self.encoders:
+        # Use BaseSynthesizer's decode_samples method
+        return BaseSynthesizer.decode_samples(self, samples)
+
+    # Fallback: return generic DataFrame
     if isinstance(samples, torch.Tensor):
         samples = samples.detach().cpu().numpy()
-
-    # CTGAN uses its own transformer system, so we need to handle decoding differently
-    # For now, return a basic DataFrame with generic column names
-    # This is a simplified approach - ideally we'd implement full CTGAN reverse transformation
 
     # Generate column names based on the number of features
     n_features = samples.shape[1]

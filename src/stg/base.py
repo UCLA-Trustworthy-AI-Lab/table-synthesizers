@@ -4,8 +4,15 @@ import pandas as pd
 import numpy as np
 import logging
 import random
+import os
+from pathlib import Path
+from typing import Optional, Dict, Any
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, LabelEncoder
+
+# Import managers as strict dependencies
+from .data_manager import DataManager
+from .config_manager import ConfigManager
 
 
 class BaseSynthesizer:
@@ -65,14 +72,28 @@ class BaseSynthesizer:
     update_frontend()
         Calculates and sends important training progress information to the client.
   """
-  def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, seed: int = None, **kwargs):
+  def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, seed: int = None,
+               enable_data_manager: bool = True, enable_config_manager: bool = True,
+               data_dir: Optional[str] = None, config_dir: Optional[str] = None, **kwargs):
     """
       Init important parameters for the model. You can enter parameters from the configuration json file. Parameters with no specification provided will use default values.
+
+      Args:
+          data_info: Information about data transformation
+          checkpoint_interval_seconds: Interval for checkpointing during training
+          epochs: Number of training epochs
+          messageSender: Message sender for reporting progress
+          seed: Random seed for reproducibility
+          enable_data_manager: Enable DataManager for unified storage (default: True)
+          enable_config_manager: Enable ConfigManager for configuration (default: True)
+          data_dir: Base directory for data storage (default: 'data')
+          config_dir: Directory for configuration files (default: 'config')
+          **kwargs: Additional arguments
     """
     self.model_loaded = False
     self.checkpoint_interval_seconds = checkpoint_interval_seconds
-    self.current_training_loss = None 
-    self.current_epoch = 0 
+    self.current_training_loss = None
+    self.current_epoch = 0
     self._epochs = epochs
     self.passed_training_time = 0
     self.timer =None
@@ -80,7 +101,7 @@ class BaseSynthesizer:
     self.data_info = data_info
     # Reproducibility
     self._seed = seed
-    
+
     # Encoding components
     self.encoders = {}
     self.column_info = {}
@@ -88,6 +109,19 @@ class BaseSynthesizer:
     self.feature_names = []
     # Logger
     self._logger = logging.getLogger(__name__)
+
+    # Initialize managers
+    self.data_manager = None
+    self.config_manager = None
+
+    if enable_data_manager:
+        model_name = self.__class__.__name__
+        self.data_manager = DataManager(model_name, base_data_dir=data_dir)
+        self._logger.info(f"DataManager initialized for {model_name}")
+
+    if enable_config_manager:
+        self.config_manager = ConfigManager(config_dir=config_dir)
+        self._logger.info("ConfigManager initialized")
   
   def train(
         self,
@@ -299,10 +333,211 @@ class BaseSynthesizer:
     """Write necessary model states and parameters into one dictionary. """
     pass
 
-        
+
   def load_state(self, checkpoint):
     """Load state from a checkpoint dictionary"""
     pass
+
+  # ============================================================================
+  # DataManager Integration Methods
+  # ============================================================================
+
+  def save_checkpoint_to_manager(self, checkpoint_name: str = None, metadata: Optional[Dict] = None):
+    """
+    Save model checkpoint using DataManager.
+
+    Args:
+        checkpoint_name: Name for the checkpoint (default: 'epoch_{current_epoch}')
+        metadata: Optional metadata to save with checkpoint
+
+    Returns:
+        Path to saved checkpoint or None if DataManager not enabled
+    """
+    if self.data_manager is None:
+        self._logger.warning("DataManager not enabled, checkpoint not saved")
+        return None
+
+    # Get model state
+    checkpoint_data = self.get_state()
+
+    # Auto-generate checkpoint name if not provided
+    if checkpoint_name is None:
+        checkpoint_name = f"epoch_{self.current_epoch}"
+
+    # Add automatic metadata
+    auto_metadata = {
+        'epoch': self.current_epoch,
+        'model_type': self.__class__.__name__,
+        'seed': self._seed
+    }
+    if self.current_training_loss is not None:
+        auto_metadata['loss'] = float(self.current_training_loss)
+
+    # Merge with user-provided metadata
+    if metadata:
+        auto_metadata.update(metadata)
+
+    # Save checkpoint
+    checkpoint_path = self.data_manager.save_checkpoint(
+        checkpoint_data,
+        checkpoint_name,
+        metadata=auto_metadata
+    )
+
+    self._logger.info(f"Checkpoint saved: {checkpoint_path}")
+    return checkpoint_path
+
+  def load_checkpoint_from_manager(self, checkpoint_name: str = 'final_model'):
+    """
+    Load model checkpoint using DataManager.
+
+    Args:
+        checkpoint_name: Name of the checkpoint to load
+
+    Returns:
+        True if loaded successfully, False otherwise
+    """
+    if self.data_manager is None:
+        self._logger.warning("DataManager not enabled, cannot load checkpoint")
+        return False
+
+    # Get the file path to the checkpoint
+    checkpoint_path = self.data_manager.checkpoints_dir / f'{checkpoint_name}.pt'
+
+    if not checkpoint_path.exists():
+        self._logger.warning(f"Checkpoint '{checkpoint_name}' not found at {checkpoint_path}")
+        return False
+
+    # Load the checkpoint file
+    checkpoint_data = torch.load(checkpoint_path, weights_only=False)
+
+    # Pass the checkpoint data directly to load_state
+    # The checkpoint dict contains both the model state and metadata
+    if 'checkpoint' in checkpoint_data:
+        # New format: wrapped with metadata
+        self.load_state(checkpoint_data['checkpoint'])
+        metadata = checkpoint_data.get('metadata', {})
+    else:
+        # Old format: direct state dict
+        self.load_state(checkpoint_data)
+        metadata = {}
+
+    # Restore epoch and metadata if available
+    if 'epoch' in metadata:
+        self.current_epoch = metadata['epoch']
+
+    self._logger.info(f"Checkpoint loaded: {checkpoint_name}, metadata: {metadata}")
+    return True
+
+  def save_samples_to_manager(self, samples, sample_name: str = None,
+                               format: str = 'csv', metadata: Optional[Dict] = None):
+    """
+    Save generated samples using DataManager.
+
+    Args:
+        samples: Generated samples (DataFrame, tensor, or array)
+        sample_name: Name for the samples (default: 'samples_epoch_{current_epoch}')
+        format: Output format ('csv', 'pickle', 'parquet')
+        metadata: Optional metadata
+
+    Returns:
+        Path to saved samples or None if DataManager not enabled
+    """
+    if self.data_manager is None:
+        self._logger.warning("DataManager not enabled, samples not saved")
+        return None
+
+    # Auto-generate sample name if not provided
+    if sample_name is None:
+        sample_name = f"samples_epoch_{self.current_epoch}"
+
+    # Add automatic metadata
+    auto_metadata = {
+        'epoch': self.current_epoch,
+        'model_type': self.__class__.__name__,
+        'seed': self._seed
+    }
+    if metadata:
+        auto_metadata.update(metadata)
+
+    # Save samples
+    samples_path = self.data_manager.save_samples(
+        samples,
+        sample_name,
+        format=format,
+        metadata=auto_metadata
+    )
+
+    self._logger.info(f"Samples saved: {samples_path}")
+    return samples_path
+
+  def save_preprocessed_data_to_manager(self, data_dict: Dict, dataset_name: str,
+                                        metadata: Optional[Dict] = None):
+    """
+    Save preprocessed data using DataManager.
+
+    Args:
+        data_dict: Dictionary containing preprocessed data
+        dataset_name: Name for the dataset
+        metadata: Optional metadata
+
+    Returns:
+        Path to saved data or None if DataManager not enabled
+    """
+    if self.data_manager is None:
+        self._logger.warning("DataManager not enabled, data not saved")
+        return None
+
+    data_path = self.data_manager.save_preprocessed_data(
+        data_dict,
+        dataset_name,
+        metadata=metadata
+    )
+
+    self._logger.info(f"Preprocessed data saved: {data_path}")
+    return data_path
+
+  # ============================================================================
+  # ConfigManager Integration Methods
+  # ============================================================================
+
+  def load_config_from_manager(self, profile: str = 'default'):
+    """
+    Load configuration for this model using ConfigManager.
+
+    Args:
+        profile: Configuration profile to load
+
+    Returns:
+        Configuration dictionary or None if ConfigManager not enabled
+    """
+    if self.config_manager is None:
+        self._logger.warning("ConfigManager not enabled, cannot load config")
+        return None
+
+    model_name = self.__class__.__name__
+    config = self.config_manager.load_config(model_name, profile=profile)
+
+    self._logger.info(f"Config loaded for {model_name}, profile: {profile}")
+    return config
+
+  def apply_config(self, config: Dict):
+    """
+    Apply configuration to model parameters.
+
+    Args:
+        config: Configuration dictionary to apply
+
+    Note:
+        Subclasses should override this method to apply model-specific configs
+    """
+    # Apply training configuration
+    if 'training' in config:
+        if 'epochs' in config['training']:
+            self._epochs = config['training']['epochs']
+        # Subclasses can override to apply more parameters
+
+    self._logger.info(f"Configuration applied: {config.keys()}")
     
   def start_threading(self):
     """

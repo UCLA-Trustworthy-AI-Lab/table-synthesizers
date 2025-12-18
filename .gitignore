@@ -230,3 +230,12 @@ test_ltm_vae_integration.py
 LTM_VAE_INTEGRATION_STATUS.md
 
 example/sandbox/*.csv
+
+#old test folder
+test/
+
+# one off fix scripts
+fix_*.py
+
+# TabSyn data
+src/stg/TabSyn/data

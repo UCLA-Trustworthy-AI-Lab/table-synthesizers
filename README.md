@@ -50,11 +50,18 @@ table-synthesizers/
 │   ├── ARF/                   # Adversarial Random Forest (synthcity)
 │   ├── NFlow/                 # Normalizing flows (synthcity)
 │   └── GREAT/                 # Transformer-based synthesis (synthcity)
-├── test/                      # Comprehensive test suite
-│   ├── test_models_comprehensive.py # Main test runner (all models)
-│   ├── dataframe_test_utils.py # Shared DataFrame testing utilities
-│   ├── test_*.py              # Individual model tests
-│   └── test_data/             # Test datasets and utilities
+├── tests/                     # Comprehensive test suite
+│   ├── conftest.py            # Global test configuration
+│   ├── unit/                  # Unit tests for individual models
+│   │   ├── conftest.py        # Unit test fixtures
+│   │   └── test_*.py          # Individual model unit tests
+│   └── integration/           # Integration tests for end-to-end workflows
+│       ├── test_*_integration.py  # Model integration tests
+│       ├── test_models_comprehensive.py # Main test runner (all models)
+│       ├── dataframe_test_utils.py # Shared DataFrame testing utilities
+│       ├── utils.py           # Integration test utilities
+│       └── test_data/         # Test datasets and utilities
+├── run_comprehensive_tests.sh # Test runner script with multiple modes
 ├── requirements.txt           # Dependencies (PyTorch 2.8, synthcity, etc.)
 ├── CLAUDE.md                  # Development guide with all model details
 └── README.md                  # This file
@@ -171,34 +178,61 @@ large_sample = synthesizer.sample(n=1000, return_dataframe=True)
 
 ## 🔧 Testing
 
-### Comprehensive Model Testing (Recommended)
+The test suite is organized into **unit tests** (fast, isolated model tests) and **integration tests** (end-to-end workflows).
+
+### Comprehensive Test Script
 
 ```bash
-# Full comprehensive test (all models, full training)
-python test/test_models_comprehensive.py
+# Run all tests (unit + integration)
+./run_comprehensive_tests.sh
 
-# Quick test (smaller datasets, fewer epochs)
-python test/test_models_comprehensive.py --mode quick
+# Run core algorithms only
+./run_comprehensive_tests.sh --core
 
-# Ultra-quick test (tiny datasets, minimal training) - Great for CI/CD
-python test/test_models_comprehensive.py --mode ultra-quick
+# Run specific test categories
+./run_comprehensive_tests.sh --stable      # CART, DPCART, SMOTE
+./run_comprehensive_tests.sh --experimental # TabSyn, AutoDiff, CTGAN, etc.
+./run_comprehensive_tests.sh --ltm         # LTM-VAE tests
 
-# Test specific model only
-python test/test_models_comprehensive.py --model TVAE --mode quick
+# Run specific models
+./run_comprehensive_tests.sh TVAE TabDDPM
 ```
 
-### Individual Tests
+### Unit Tests (Fast, Isolated)
 
 ```bash
-# Run all traditional tests
-pytest test/ -v
+# Run all unit tests
+pytest tests/unit/ -v
+
+# Run specific model unit test
+pytest tests/unit/test_aim.py -v
+pytest tests/unit/test_tvae.py -v
+```
+
+### Integration Tests (End-to-End Workflows)
+
+```bash
+# Run all integration tests
+pytest tests/integration/ -v
+
+# Run comprehensive model testing (all models, full training)
+python tests/integration/test_models_comprehensive.py
+
+# Quick test (smaller datasets, fewer epochs)
+python tests/integration/test_models_comprehensive.py --mode quick
+
+# Ultra-quick test (tiny datasets, minimal training) - Great for CI/CD
+python tests/integration/test_models_comprehensive.py --mode ultra-quick
+
+# Test specific model only
+python tests/integration/test_models_comprehensive.py --model TVAE --mode quick
+
+# Run specific integration tests
+pytest tests/integration/test_aim_integration.py -v
+pytest tests/integration/test_tvae_integration.py -v
 
 # Run DataFrame input tests only
 pytest -k "dataframe_support" -v
-
-# Run specific model tests
-pytest test/test_TVAE.py -v
-pytest test/test_identity.py -v
 ```
 
 ### Performance Benchmarking
@@ -245,8 +279,9 @@ synthesizer = TableSynthesizer('PATECTGAN', {
 
 1. Follow the architecture patterns in `BaseSynthesizer`
 2. Implement `_train()` and `_generate()` methods
-3. Add tests in `test/test_your_model.py`
-4. Update this README with your model information
+3. Add unit tests in `tests/unit/test_your_model.py`
+4. Add integration tests in `tests/integration/test_your_model_integration.py`
+5. Update this README with your model information
 
 ## 📖 Documentation
 
@@ -272,9 +307,9 @@ synthesizer = TableSynthesizer('PATECTGAN', {
 
 ### Getting Help
 
-- Run `python test/test_models_comprehensive.py --mode ultra-quick` to verify setup
+- Run `./run_comprehensive_tests.sh --core` or `python tests/integration/test_models_comprehensive.py --mode ultra-quick` to verify setup
 - Check CLAUDE.md for detailed architecture and troubleshooting
-- All models have been tested and verified working as of September 2025
+- All models have been tested and verified working as of December 2025
 
 ## 📄 License
 
@@ -298,10 +333,13 @@ This project integrates and wraps ideas and/or components inspired by the follow
 
 - AutoDiffusion (UCLA Trustworthy AI Lab): License not declared (no LICENSE file found as of this update)
   - Repo: https://github.com/UCLA-Trustworthy-AI-Lab/AutoDiffusion
-  - Note: Please verify licensing terms before distribution or derivative use.
-
-- Synth-MIA (UCLA Trustworthy AI Lab): Repository unavailable at the provided URL (404); license unknown
-  - Repo (as cited): https://github.com/UCLA-Trustworthy-AI-Lab/Synth-MIA
-  - Note: If an updated location exists, please update CITED_LIBS and this section accordingly.
 
 If you are an author or maintainer of any cited project and prefer a different attribution format, please open an issue.
+
+# Reference
+
+- [SynthCity](https://github.com/vanderschaarlab/synthcity)
+- [TabSyn](https://github.com/amazon-science/tabsyn)
+- [AutoDiffusion](https://github.com/UCLA-Trustworthy-AI-Lab/AutoDiffusion)
+
+# Citation
