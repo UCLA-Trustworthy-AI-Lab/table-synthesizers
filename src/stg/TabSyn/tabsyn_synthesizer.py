@@ -81,10 +81,10 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Prepare the dataset
             prep_start = time.time()
             print("[TabSyn][train] Preparing dataset and metadata...", flush=True)
-            task_type = infer_task_type(train_data.values)
+            task_type = infer_task_type(train_data)
             # Infer task type using the DataFrame to correctly detect categorical targets
             # task_type = infer_task_type(train_data)
-            create_dataset_with_metadata(train_data.values, self.dataset_name, task_type)
+            create_dataset_with_metadata(train_data, self.dataset_name, task_type)
             process_data(self.dataset_name)
             print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
             

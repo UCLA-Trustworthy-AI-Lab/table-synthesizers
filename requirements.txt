@@ -1,8 +1,8 @@
 # Core dependencies - CRITICAL: Use exact versions for compatibility
-torch==2.2.2                     # Upgraded for native RMSNorm support (required for synthcity)
-torchvision==0.17.2              # Compatible with PyTorch 2.2.2
+torch>=2.3                       # Compatible with torchvision 0.17.2 and provides RMSNorm
+torchvision>=0.17.2              # Compatible with PyTorch 2.2.2
 pandas>=2.0.0
-numpy==1.26.0
+numpy<=2.0.0
 scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
 scipy==1.11.4                    # Downgraded for TabSyn _lazywhere compatibility
 
@@ -26,10 +26,11 @@ transformers>=4.0.0
 datasets>=2.0.0
 accelerate>=0.20.0
 ema-pytorch>=0.7.0
+boto3>=1.26.0                    # Required for LTM S3 storage backend
 
 # Synthcity models (BayesianNetwork, GREAT, ARF, NFlow) - NOW WORKING ✅
 # Fixed compatibility issues with PyTorch 2.8.0 upgrade
-synthcity==0.2.12                # External package for advanced synthesizers
+synthcity>=0.2.12                # External package for advanced synthesizers
 
 seaborn
 

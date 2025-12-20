@@ -395,7 +395,7 @@ def main():
                         help="Set this flag if the task is regression.")
     parser.add_argument('--seed', type=int, default=0, help="Random seed.")
     parser.add_argument('--save', action='store_true', help="If set, the resampled output is saved to CSV.")
-    parser.add_argument('--save_path', type=str, default="outputs", help="Directory to save the CSV if --save is set.")
+    parser.add_argument('--save_path', type=str, default="data/SMOTE", help="Directory to save the CSV if --save is set.")
     parser.add_argument('--n_samples', type=int, default=-1, help="Total number of data points to resample. Default -1 means same size as input df.")
     args = parser.parse_args()
     
