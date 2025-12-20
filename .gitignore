@@ -238,4 +238,15 @@ test/
 fix_*.py
 
 # TabSyn data
-src/stg/TabSyn/data
+src/stg/TabSyn/data/*
+
+
+# Model outputs - standardized under data/ directory
+data/SMOTE/*
+!data/SMOTE/.gitkeep
+data/TabSyn/synthetic/*
+!data/TabSyn/synthetic/.gitkeep
+data/TabSyn/impute/*
+!data/TabSyn/impute/.gitkeep
+data/TabSyn/ckpt/*
+!data/TabSyn/ckpt/.gitkeep
