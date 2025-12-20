@@ -14,6 +14,8 @@ from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, LabelEncoder
 from .data_manager import DataManager
 from .config_manager import ConfigManager
 
+# Import DataLoader for file loading
+from data_loader import DataLoader as FileDataLoader
 
 class BaseSynthesizer:
   """
@@ -152,6 +154,46 @@ class BaseSynthesizer:
 
     self.stop_threading()
 
+  def train_from_csv(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+    """
+    Train synthesizer directly from a CSV file.
+    
+    Args:
+        file_path: Path to the CSV file
+        optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+        batch_size: Batch size for DataLoader creation
+    
+    Raises:
+        ImportError: If DataLoader is not available
+        FileNotFoundError: If the file does not exist
+    """
+    if FileDataLoader is None:
+        raise ImportError("DataLoader not available. Please ensure data_loader package is installed.")
+    
+    loader = FileDataLoader()
+    df = loader.load(file_path, optimize_memory=optimize_memory)
+    self.train(df, batch_size=batch_size)
+
+  def train_from_parquet(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+    """
+    Train synthesizer directly from a Parquet file.
+    
+    Args:
+        file_path: Path to the Parquet file
+        optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+        batch_size: Batch size for DataLoader creation
+    
+    Raises:
+        ImportError: If DataLoader is not available
+        FileNotFoundError: If the file does not exist
+    """
+    if FileDataLoader is None:
+        raise ImportError("DataLoader not available. Please ensure data_loader package is installed.")
+    
+    loader = FileDataLoader()
+    df = loader.load(file_path, optimize_memory=optimize_memory)
+    self.train(df, batch_size=batch_size)
+
   def _train(self, train_data):
     raise NotImplementedError("Training method need to be implemented by child synthesizers!")
     
@@ -167,6 +209,36 @@ class BaseSynthesizer:
     """
         
     return self._generate(n, condition)
+
+  def fit(self, data, batch_size=32):
+    """sklearn-style interface for training.
+    
+    This is a convenience method that delegates to train().
+    Provided for sklearn compatibility.
+    
+    Args:
+        data: Either a pandas DataFrame or a torch DataLoader
+        batch_size: Batch size for DataLoader creation when input is DataFrame
+    """
+    self.train(data, batch_size=batch_size)
+
+  def sample(self, n_samples, return_dataframe=False):
+    """sklearn-style interface for generation.
+    
+    This is a convenience method that delegates to generate() and optionally
+    decodes the output to a DataFrame.
+    
+    Args:
+        n_samples: Number of samples to generate
+        return_dataframe: If True, decode samples to DataFrame format
+    
+    Returns:
+        torch.Tensor or pd.DataFrame: Generated samples
+    """
+    synth_data = self.generate(n_samples)
+    if return_dataframe and hasattr(self, 'decode_samples'):
+        return self.decode_samples(synth_data)
+    return synth_data
 
   def _generate(self, n, condition=None):
     raise NotImplementedError("Generating method need to be implemented by child synthesizers!")

@@ -270,16 +270,3 @@ class TVAE(BaseSynthesizer):
       self.optimizerAE.load_state_dict(state['optimizerAE'])
 
       self.model_loaded = True
-
-  def fit(self, data):
-      """Fit method for sklearn-style interface."""
-      self.train(data)
-
-  def sample(self, n_samples, return_dataframe=False):
-      """Sample method for sklearn-style interface."""
-      synth_data = self.generate(n_samples)
-
-      if return_dataframe and hasattr(self, 'decode_samples'):
-          return self.decode_samples(synth_data)
-
-      return synth_data

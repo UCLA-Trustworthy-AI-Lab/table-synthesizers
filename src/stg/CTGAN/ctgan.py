@@ -477,19 +477,6 @@ class CTGAN(BaseSynthesizer):
 
         return (loss * m).sum() / data.size()[0]
 
-  def fit(self, data):
-      """Fit method for sklearn-style interface."""
-      self.train(data)
-
-  def sample(self, n_samples, return_dataframe=False):
-      """Sample method for sklearn-style interface."""
-      synth_data = self.generate(n_samples)
-
-      if return_dataframe and hasattr(self, 'decode_samples'):
-          return self.decode_samples(synth_data)
-
-      return synth_data
-
   def decode_samples(self, samples):
     """Decode generated samples back to original DataFrame format"""
     # If BaseSynthesizer's encoders are available, use them for proper decoding

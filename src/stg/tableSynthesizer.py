@@ -281,6 +281,36 @@ class TableSynthesizer:
             batch_size=batch_size         
         )
 
+    def train_from_csv(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+        """
+        Train synthesizer directly from a CSV file.
+        
+        Args:
+            file_path: Path to the CSV file
+            optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+            batch_size: Batch size for DataLoader creation
+        
+        Raises:
+            ImportError: If DataLoader is not available
+            FileNotFoundError: If the file does not exist
+        """
+        self.model.train_from_csv(file_path, optimize_memory=optimize_memory, batch_size=batch_size)
+
+    def train_from_parquet(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+        """
+        Train synthesizer directly from a Parquet file.
+        
+        Args:
+            file_path: Path to the Parquet file
+            optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+            batch_size: Batch size for DataLoader creation
+        
+        Raises:
+            ImportError: If DataLoader is not available
+            FileNotFoundError: If the file does not exist
+        """
+        self.model.train_from_parquet(file_path, optimize_memory=optimize_memory, batch_size=batch_size)
+
     def sample(self, n, condition=None, return_dataframe=False):
         """Generate synthetic samples
 

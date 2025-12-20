@@ -574,18 +574,6 @@ class PATECTGAN(BaseSynthesizer):
 
         return data[:n]
 
-    def fit(self, data, *ignore, transformer=None, categorical_columns=[], ordinal_columns=[], continuous_columns=[], preprocessor_eps=0.0, nullable=False):
-        self.train(data)
-
-    def sample(self, n_samples, return_dataframe=False):
-        samples = self.generate(n_samples)
-        if return_dataframe:
-            # Use BaseSynthesizer's decode_samples method for DataFrame output
-            return self.decode_samples(samples)
-        else:
-            return samples
-
-            
     def get_state(self):
         state = {
           'cond_generator':self.cond_generator,
@@ -658,12 +646,6 @@ class PATECTGAN(BaseSynthesizer):
             self.optimizer_t[i].load_state_dict(state['optimizer_t_state'][i]) 
         
         self.model_loaded = True
-
-
-
-
-        
-
 
     @staticmethod
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
