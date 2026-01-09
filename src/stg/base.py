@@ -15,7 +15,7 @@ from .data_manager import DataManager
 from .config_manager import ConfigManager
 
 # Import DataLoader for file loading
-from data_loader import DataLoader as FileDataLoader
+from ..data_loader import DataLoader as FileDataLoader
 
 class BaseSynthesizer:
   """

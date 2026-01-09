@@ -24,7 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install synthcity from custom branch for torch compatibility
-RUN git clone -b upgrade_torch27 https://github.com/ohsono/synthcity.git /tmp/synthcity && \
+RUN git clone -b main https://github.com/ohsono/synthcity.git /tmp/synthcity && \
   pip install --no-cache-dir -e /tmp/synthcity && \
   rm -rf /tmp/synthcity
 

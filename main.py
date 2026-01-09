@@ -23,13 +23,18 @@ class CustomTensorDataset(Dataset):
         return self.data_tensor[idx]
 
 def main():
-    parser = argparse.ArgumentParser(description='TVAE example with management system')
+    parser = argparse.ArgumentParser(description='Table Synthesizers - Training with Management System')
     parser.add_argument('--profile', default='quick', choices=['quick', 'default', 'production'],
                        help='Configuration profile to use')
     parser.add_argument('--with-wandb', action='store_true',
                        help='Enable WandB experiment tracking')
     parser.add_argument('--template', type=str, default=None,
                        help='Configuration template to apply')
+    parser.add_argument('--select-training-model', type=str, default=None,
+                       choices=['Identity', 'TVAE', 'CTGAN', 'PATECTGAN', 'SMOTE', 'CART', 'DPCART',
+                               'AIM', 'TabDDPM', 'TabSyn', 'AutoDiff', 'LTM_VAE',
+                               'ARF', 'NFlow', 'BayesianNetwork', 'GREAT'],
+                       help='Select training model algorithm (overrides config file)')
     parser.add_argument('--config-path', type=str, default=None,
                        help='Path to the config file')
     parser.add_argument('--transformed-data-path', type=str, default=None,
@@ -39,7 +44,7 @@ def main():
     args = parser.parse_args()
 
     print("="*80)
-    print("TABLE SYNTHESIZERS - TVAE Example with Management System")
+    print("TABLE SYNTHESIZERS - Training with Management System")
     print("="*80)
 
     # Prioritize args, fallback to env vars
@@ -53,8 +58,6 @@ def main():
          raise ValueError("Transformed data path must be provided via --transformed-data-path or TRANSFORMED_DATA_PATH env var")
     if not output_path:
         raise ValueError("Output path must be provided via --synthesizer-output-path or SYNTHESIZER_OUTPUT_PATH env var")
-    if not all([config_path, transformed_data_path, output_path]):
-        raise ValueError("Environment variables SYNTHESIZER_CONFIG_PATH, TRANSFORMED_DATA_PATH, and SYNTHESIZER_OUTPUT_PATH must be set.")
 
     # Load the config JSON
     if os.path.exists(config_path):
@@ -66,6 +69,11 @@ def main():
             raise ValueError("The config file must contain 'model' and 'N' keys.")
     else:
         raise FileNotFoundError(f"Config file not found at {config_path}")
+    
+    # Override model if --select-training-model is provided
+    if args.select_training_model:
+        print(f"🔄 Overriding model from config: '{model}' -> '{args.select_training_model}'")
+        model = args.select_training_model
 
     data_csv_file = os.path.join(transformed_data_path, 'transform_output.csv')
     checkpoint_file = os.path.join(transformed_data_path, 'checkpoint.json')
@@ -75,9 +83,19 @@ def main():
     if os.path.exists(data_csv_file):
         df = pd.read_csv(data_csv_file)
         
-        # Models that require raw DataFrame input (e.g., TabSyn)
-        # Add other DataFrame-preferring models to this list as needed
-        DATAFRAME_MODELS = ['tabsyn', 'tabsynsynthesizer'] 
+        # Models that ONLY support DataFrame input (not DataLoader)
+        # These models have their own internal encoding/preprocessing
+        DATAFRAME_MODELS = [
+            'smote', 'smotesynthesizer',
+            'cart', 'cartsynthesizer', 
+            'dpcart', 'dpcartsynthesizer',
+            'arf', 'arfsynthesizer',
+            'nflow', 'nflowsynthesizer',
+            'bayesiannetwork', 'bayesiannetworksynthesizer',
+            'great', 'greatsynthesizer',
+            'tabsyn', 'tabsynsynthesizer',
+            'autodiff', 'autodiffsynthesizer'
+        ]
         
         # Normalize model name for comparison
         model_key = model.lower() if isinstance(model, str) else ''

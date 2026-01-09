@@ -1,0 +1,19 @@
+{
+    "model": "CTGAN",
+    "N": 1000,
+    "epochs": 300,
+    "batch_size": 500,
+    "generator_dim": [
+        256,
+        256
+    ],
+    "discriminator_dim": [
+        256,
+        256
+    ],
+    "generator_lr": 2e-4,
+    "discriminator_lr": 2e-4,
+    "discriminator_steps": 1,
+    "log_frequency": true,
+    "pac": 10
+}

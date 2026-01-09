@@ -1,0 +1,10 @@
+{
+    "model": "AutoDiff",
+    "N": 1000,
+    "epochs": 100,
+    "batch_size": 256,
+    "lr": 0.001,
+    "weight_decay": 1e-5,
+    "latent_dim": 128,
+    "num_timesteps": 1000
+}

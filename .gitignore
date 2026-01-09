@@ -51,6 +51,7 @@ example/comprehensive_results*/*
 example/sandbox*/*
 *nohup.out
 example/command
+example_run/*
 
 src/stg/TabSyn/data/*
 src/stg/TabSyn/data/test_tabsyn_df/*

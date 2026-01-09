@@ -1,6 +1,6 @@
 # Core dependencies - CRITICAL: Use exact versions for compatibility
-torch==2.3.1                       # Pinned as requested by user
-torchvision==0.18.1              # Compatible with PyTorch 2.3.1
+torch>=2.2.0                       # Pinned as requested by user
+torchvision>=0.17.0.1              # Compatible with PyTorch 2.3.1
 pandas>=2.0.0
 numpy<=2.0.0
 scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
@@ -39,15 +39,3 @@ seaborn
 # opendp==0.7.0
 # autodp==0.2
 # private-pgm @ git+https://github.com/ryan112358/private-pgm.git
-
-# Note for Apple Silicon (ARM64) users:
-# Use conda to install core packages for better ARM64 compatibility:
-# conda install pytorch numpy pandas scikit-learn -c pytorch
-# Then use pip for the remaining dependencies
-
-# Conda Environment Setup for LTM Testing:
-# 1. Activate your conda environment: conda activate <your-env-name>
-# 2. Install LTM dependencies: pip install transformers datasets accelerate ema-pytorch
-# 3. Set Python path: export PYTHONPATH="$PWD/src/stg/LTM-VAE/src:$PYTHONPATH"
-# 4. Run tests: pytest test_ltm_integration_basic.py -v
-# Or use the convenience script: ./run_tests_conda.sh

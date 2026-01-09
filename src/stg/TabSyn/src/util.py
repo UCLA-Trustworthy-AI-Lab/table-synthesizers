@@ -35,8 +35,11 @@ except ImportError:
         project_root = os.path.dirname(project_root)
         zero_path = os.path.join(project_root, 'src', 'stg', 'zero_workaround.py')
         if os.path.exists(zero_path):
-            sys.path.insert(0, os.path.join(project_root, 'src'))
-            import stg.zero_workaround as zero
+            # Import zero_workaround directly as a module to avoid circular imports
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("zero_workaround", zero_path)
+            zero = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(zero)
             sys.modules['zero'] = zero
             break
     else:
