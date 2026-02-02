@@ -12,15 +12,38 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+# vscode
+.vscode/
+
 # Input preprocessed datasets
 datasets/
 
 # Output training datasets
 outputs/
 
+# local setup file
+
+push_to_gcr.sh
+run_tests_conda.sh
+setup_conda_env.py
+setup_conda_env.sh
+
+# presentation
 presentation/*
 
+# DEMO
+*.ipynb
+
 core
+
+# Config
+config/
+
+# Data
+data/
+
+# example
+example/
 
 # AGENTS.md
 AGENTS.md
