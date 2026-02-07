@@ -142,15 +142,15 @@ def test_SMOTE_with_mixed_features():
 
 
 @pytest.mark.skipif(not SMOTE_AVAILABLE, reason="SMOTE not available due to missing dependencies")
-def test_SMOTE_sandbox_adult():
-    """Test SMOTE on adult dataset (classification task)"""
-    run_sandbox_dataset_test('SMOTE', 'adult', n_samples=100, sample_ratio=0.05)
+def test_SMOTE_sandbox_titanic():
+    """Test SMOTE on Titanic dataset (classification task)"""
+    run_sandbox_dataset_test('SMOTE', 'Titanic', n_samples=100, sample_ratio=0.2)
 
 
-@pytest.mark.skipif(not SMOTE_AVAILABLE, reason="SMOTE not available due to missing dependencies") 
-def test_SMOTE_sandbox_covtype():
-    """Test SMOTE on covtype dataset (multi-class classification)"""
-    run_sandbox_dataset_test('SMOTE', 'covtype', n_samples=100, sample_ratio=0.01)
+@pytest.mark.skipif(not SMOTE_AVAILABLE, reason="SMOTE not available due to missing dependencies")
+def test_SMOTE_sandbox_bean():
+    """Test SMOTE on Bean dataset (multi-class classification)"""
+    run_sandbox_dataset_test('SMOTE', 'Bean', n_samples=100, sample_ratio=0.05)
 
 
 def test_SMOTE_availability():
@@ -166,10 +166,10 @@ if __name__ == "__main__":
     test_SMOTE_availability()
     if SMOTE_AVAILABLE:
         test_SMOTE_initialization()
-        test_SMOTE_dataframe_support() 
+        test_SMOTE_dataframe_support()
         test_SMOTE_auto_target_detection()
         test_SMOTE_with_mixed_features()
-        
+
         # Test sandbox datasets
-        test_SMOTE_sandbox_adult()
-        test_SMOTE_sandbox_covtype()
+        test_SMOTE_sandbox_titanic()
+        test_SMOTE_sandbox_bean()

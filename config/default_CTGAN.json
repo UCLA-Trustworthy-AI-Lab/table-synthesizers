@@ -1,0 +1,14 @@
+{
+    "model_type": "gpu",
+    "epochs": 50,
+    "batch_size": 200,
+    "pac": 5,
+    "embedding_dim": 128,
+    "generator_dim": [256, 256],
+    "discriminator_dim": [256, 256],
+    "generator_lr": 0.0002,
+    "discriminator_lr": 0.0002,
+    "description": "Conditional GAN - Best balance of speed and quality",
+    "speedup": "15-30x",
+    "quality": "High"
+}

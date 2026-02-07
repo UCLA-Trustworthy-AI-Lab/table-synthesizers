@@ -13,15 +13,74 @@ except ImportError:
     SYNTHCITY_AVAILABLE = False
 
 
+def _patch_great_trainer():
+    """Patch be_great's GReaT.fit to work with transformers 5.x.
+
+    transformers 5.0 renamed the Trainer `tokenizer` parameter to
+    `processing_class`. be_great 0.0.9 still passes `tokenizer=`, so we
+    monkey-patch GReaT.fit to use the new parameter name.
+    """
+    try:
+        import be_great.great as _great_module
+        from transformers import Trainer
+        import inspect
+
+        # Check if Trainer still accepts `tokenizer`
+        sig = inspect.signature(Trainer.__init__)
+        if 'tokenizer' in sig.parameters:
+            return  # No patch needed
+
+        _original_fit = _great_module.GReaT.fit
+
+        def _patched_fit(self, data, column_names=None, conditional_col=None,
+                         resume_from_checkpoint=False):
+            import logging
+            from be_great.great import (
+                GReaTDataCollator, GReaTDataset, GReaTTrainer,
+                TrainingArguments, _array_to_dataframe,
+            )
+
+            df = _array_to_dataframe(data, columns=column_names)
+            self._update_column_information(df)
+            self._update_conditional_information(df, conditional_col)
+
+            logging.info("Convert data into HuggingFace dataset object...")
+            great_ds = GReaTDataset.from_pandas(df)
+            great_ds.set_tokenizer(self.tokenizer, self.float_precision)
+
+            logging.info("Create GReaT Trainer...")
+            training_args = TrainingArguments(
+                self.experiment_dir,
+                num_train_epochs=self.epochs,
+                per_device_train_batch_size=self.batch_size,
+                **self.train_hyperparameters,
+            )
+            great_trainer = GReaTTrainer(
+                self.model,
+                training_args,
+                train_dataset=great_ds,
+                processing_class=self.tokenizer,
+                data_collator=GReaTDataCollator(self.tokenizer),
+            )
+
+            logging.info("Start training...")
+            great_trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+            return great_trainer
+
+        _great_module.GReaT.fit = _patched_fit
+    except Exception:
+        pass  # If patching fails, let the original error surface
+
+
 class GREATSynthesizer(BaseSynthesizer):
     """
     GREAT (GeneRative fEAture Transformer) synthesizer for tabular data generation.
-    
+
     This synthesizer uses synthcity's GREAT implementation which is a transformer-based
     generative model for mixed-type tabular data.
     Only supports DataFrame input (not DataLoader).
     """
-    
+
     def __init__(self, data_info=None, **kwargs):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for GREATSynthesizer. "
@@ -29,6 +88,7 @@ class GREATSynthesizer(BaseSynthesizer):
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
+        _patch_great_trainer()
 
     def fit(self, data):
         """Sklearn-style fit method."""
@@ -38,43 +98,43 @@ class GREATSynthesizer(BaseSynthesizer):
         """Override base train method to handle DataFrame input directly."""
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("GREATSynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         self.stored_data = train_data.copy()
-        
+
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
         self.model = Plugins().get("great")
         self.model.fit(loader)
-        
+
         print(f"GREAT: trained on {len(self.stored_data)} samples")
-        
+
         self.stop_threading()
-    
+
     def _train(self, train_data):
         """Not used - we override train() directly."""
         pass
-    
+
     def _generate(self, n_samples):
         """Generate synthetic samples using GREAT."""
         if self.model is None:
             raise RuntimeError("Model must be trained before generating samples")
-        
+
         # Generate samples using synthcity
         synthetic_loader = self.model.generate(count=n_samples)
         synthetic_df = synthetic_loader.dataframe()
-        
+
         return synthetic_df
-    
+
     def sample(self, n=None, return_dataframe=False):
         """Generate synthetic samples."""
         if n is None:
             n = len(self.stored_data) if self.stored_data is not None else 100
-        
+
         synthetic_df = self._generate(n)
-        
+
         if return_dataframe:
             return synthetic_df
         else:
@@ -82,34 +142,34 @@ class GREATSynthesizer(BaseSynthesizer):
             # First encode categorical columns if any
             encoded_df = self._encode_for_tensor(synthetic_df)
             return torch.tensor(encoded_df.values, dtype=torch.float32)
-    
+
     def _encode_for_tensor(self, df):
         """Encode DataFrame for tensor conversion."""
         encoded_df = df.copy()
-        
+
         for col in df.columns:
             if not pd.api.types.is_numeric_dtype(df[col]):
                 # Encode categorical column to integers
                 categories = pd.Categorical(df[col])
                 encoded_df[col] = categories.codes
-        
+
         return encoded_df
-    
+
     def generate(self, n_samples, condition=None):
         """Generate synthetic samples - called by TableSynthesizer.sample()."""
         # Generate decoded synthetic data (with original types)
         synthetic_decoded_df = self._generate(n_samples)
-        
+
         # Create encoded version for tensor compatibility
         synthetic_encoded_df = self._encode_for_tensor(synthetic_decoded_df)
-        
+
         # Store both versions
         self._last_generated_encoded_df = synthetic_encoded_df
         self._last_generated_df = synthetic_decoded_df
-        
+
         # Convert encoded version to tensor for TableSynthesizer compatibility
         return torch.tensor(synthetic_encoded_df.values, dtype=torch.float32)
-    
+
     def decode_samples(self, tensor_samples):
         """Convert tensor samples back to DataFrame - used for return_dataframe=True."""
         # Return the stored DataFrame if available and matches size

@@ -1,0 +1,6 @@
+{
+    "model_type": "cpu",
+    "description": "Pass-through (returns original data)",
+    "speedup": "1x",
+    "quality": "Perfect"
+}

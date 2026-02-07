@@ -1,0 +1,7 @@
+{
+    "model_type": "gpu",
+    "description": "GeneRative fEAture Transformer - Transformer-based generative model for mixed-type tabular data",
+    "backend": "synthcity",
+    "speedup": "5-10x",
+    "quality": "High"
+}

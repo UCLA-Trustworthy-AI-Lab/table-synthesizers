@@ -1,0 +1,7 @@
+{
+    "model_type": "cpu",
+    "description": "Normalizing Flow - Learns invertible transformations to model data distribution",
+    "backend": "synthcity",
+    "speedup": "1-2x",
+    "quality": "High"
+}

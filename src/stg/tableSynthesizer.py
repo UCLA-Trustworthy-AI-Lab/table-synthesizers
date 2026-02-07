@@ -88,7 +88,7 @@ DEFAULT_MODELS = {"Identity":Identity,
                   "CART":CARTSynthesizer,
                   "DPCART":DPCARTSynthesizer}
 
-if 'TABDDPM_AVAILABLE' in globals() and TABDDPM_AVAILABLE:
+if TABDDPM_AVAILABLE:
     DEFAULT_MODELS["TabDDPM"] = TabDDPM
 
 if AIM_AVAILABLE:

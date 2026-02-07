@@ -1,0 +1,11 @@
+{
+    "model_type": "gpu",
+    "epochs": 100,
+    "batch_size": 256,
+    "num_timesteps": 1000,
+    "gaussian_loss_type": "mse",
+    "scheduler": "cosine",
+    "description": "Diffusion model - Highest quality",
+    "speedup": "20-40x",
+    "quality": "Highest"
+}

@@ -116,6 +116,24 @@ class DataSampler(object):
 
         self.num_rows = num_rows
 
+        # Pre-cache all data as numpy array for fast sampling
+        all_batches = []
+        for batch in self._data_loader:
+            all_batches.append(batch.numpy())
+        self._cached_data = np.vstack(all_batches)
+
+        # Build per-column, per-category index for O(1) conditional lookups
+        self._category_row_indices = {}
+        for col_idx in range(n_discrete_columns):
+            matrix_st = self._discrete_column_matrix_st[col_idx]
+            n_cat = self._discrete_column_n_category[col_idx]
+            matrix_ed = matrix_st + n_cat
+            col_data = self._cached_data[:, matrix_st:matrix_ed]
+            category_choices = np.argmax(col_data, axis=1)
+            self._category_row_indices[col_idx] = {}
+            for cat_val in range(n_cat):
+                self._category_row_indices[col_idx][cat_val] = np.where(category_choices == cat_val)[0]
+
     def _random_choice_prob_index(self, discrete_column_id):
         probs = self._discrete_column_category_prob[discrete_column_id]
         r = np.expand_dims(np.random.rand(probs.shape[0]), axis=1)
@@ -156,71 +174,48 @@ class DataSampler(object):
             return None
 
         cond = np.zeros((batch_size, self._n_categories), dtype='float32')
-        batch_count = 0
 
-        for batch in self._data_loader:
-            data = batch.numpy()
-            while batch_count < batch_size:
-                row_idx = np.random.randint(0, data.shape[0])
-                col_idx = np.random.randint(0, self._n_discrete_columns)
-                matrix_st = self._discrete_column_matrix_st[col_idx]
-                matrix_ed = matrix_st + self._discrete_column_n_category[col_idx]
-                pick = np.argmax(data[row_idx, matrix_st:matrix_ed])
-                cond[batch_count, pick + self._discrete_column_cond_st[col_idx]] = 1
-                batch_count += 1
-                if batch_count >= batch_size:
-                    break
+        row_indices = np.random.randint(0, self._cached_data.shape[0], size=batch_size)
+        col_indices = np.random.randint(0, self._n_discrete_columns, size=batch_size)
+
+        for i in range(batch_size):
+            row_idx = row_indices[i]
+            col_idx = col_indices[i]
+            matrix_st = self._discrete_column_matrix_st[col_idx]
+            matrix_ed = matrix_st + self._discrete_column_n_category[col_idx]
+            pick = np.argmax(self._cached_data[row_idx, matrix_st:matrix_ed])
+            cond[i, pick + self._discrete_column_cond_st[col_idx]] = 1
 
         return cond
 
     def sample_data(self, n, col, opt):
-        """Sample data from original training data satisfying the sampled conditional vector using reservoir sampling.
+        """Sample data from original training data satisfying the sampled conditional vector.
+
+        Uses pre-built category index for O(1) lookups instead of linear scan.
 
         Returns:
             n rows of matrix data.
         """
         if col is None:
-            # No conditional constraints, just sample randomly
-            all_data = []
-            for batch in self._data_loader:
-                all_data.append(batch.numpy())
-            all_data = np.vstack(all_data)
-            indices = np.random.choice(len(all_data), size=n, replace=True)
-            return all_data[indices]
-        
-        # For each position in the batch, we need to find data that matches that specific condition
-        result = []
-        
-        # Collect all data first
-        all_data = []
-        for batch in self._data_loader:
-            all_data.append(batch.numpy())
-        all_data = np.vstack(all_data)
-        
-        # For each sample position, find data matching its condition
+            indices = np.random.choice(len(self._cached_data), size=n, replace=True)
+            return self._cached_data[indices]
+
+        result = np.empty((n, self._cached_data.shape[1]), dtype=self._cached_data.dtype)
+
         for i in range(n):
             condition_col = col[i] if hasattr(col, '__len__') and len(col) > i else col[0] if hasattr(col, '__len__') else col
             condition_opt = opt[i] if hasattr(opt, '__len__') and len(opt) > i else opt[0] if hasattr(opt, '__len__') else opt
-            
-            # Find all data rows that match this condition
-            matching_rows = []
-            for row_idx in range(all_data.shape[0]):
-                matrix_st = self._discrete_column_matrix_st[condition_col]
-                matrix_ed = matrix_st + self._discrete_column_n_category[condition_col]
-                actual_choice = np.argmax(all_data[row_idx, matrix_st:matrix_ed])
-                if actual_choice == condition_opt:
-                    matching_rows.append(row_idx)
-            
-            if matching_rows:
-                # Randomly select one of the matching rows
-                selected_row = np.random.choice(matching_rows)
-                result.append(all_data[selected_row])
+
+            matching_indices = self._category_row_indices.get(condition_col, {}).get(condition_opt, None)
+
+            if matching_indices is not None and len(matching_indices) > 0:
+                selected_row = np.random.choice(matching_indices)
             else:
-                # If no matching data found, just sample randomly (fallback)
-                selected_row = np.random.choice(len(all_data))
-                result.append(all_data[selected_row])
-        
-        return np.array(result)
+                selected_row = np.random.randint(0, len(self._cached_data))
+
+            result[i] = self._cached_data[selected_row]
+
+        return result
     
     def dim_cond_vec(self):
         return self._n_categories

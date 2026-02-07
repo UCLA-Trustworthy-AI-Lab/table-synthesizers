@@ -2,7 +2,6 @@ import logging
 """CLI."""
 import numpy as np
 import torch
-from torch import optim
 from torch.nn import Linear, Module, Parameter, ReLU, Sequential
 from torch.nn.functional import cross_entropy
 from torch.optim import Adam
@@ -128,9 +127,10 @@ class TVAE(BaseSynthesizer):
         batch_size=500,
         epochs=300,
         loss_factor=2,
+        learning_rate=1e-3,
         cuda=True,
         checkpoint_interval_seconds=None,
-        **kwargs): 
+        **kwargs):
     BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwargs)
     self.embedding_dim = embedding_dim
     self.compress_dims = compress_dims
@@ -139,17 +139,16 @@ class TVAE(BaseSynthesizer):
     self.l2scale = l2scale
     self.batch_size = batch_size
     self.loss_factor = loss_factor
+    self.learning_rate = learning_rate
     self._epochs = epochs
-    
-    # Set device - use base class method
-    self.set_device()
-    if not cuda or not torch.cuda.is_available():
-        self.set_device(torch.device("cpu"))
-    else:
+
+    # Set device once: respect cuda flag, with auto-detection fallback
+    if cuda and torch.cuda.is_available():
         self.set_device(torch.device("cuda"))
-    # Normalize device selection once, respecting `cuda` flag
-    # desired_device = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
-    # self.set_device(desired_device)
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        self.set_device(torch.device("mps"))
+    else:
+        self.set_device(torch.device("cpu"))
         
     # Initialize transformer if data_info is provided
     if data_info is not None:
@@ -166,10 +165,11 @@ class TVAE(BaseSynthesizer):
     self.encoder.to(self._device)
     self.decoder.to(self._device)
     
+    log_interval = max(1, self._epochs // 10)
     for i in range(self._epochs):
         self.current_epoch = i + 1
-        if i % 100 == 0:
-            logging.getLogger(__name__).info("TVAE epoch %d/%d", i, self._epochs)
+        if i % log_interval == 0:
+            logging.getLogger(__name__).info("TVAE epoch %d/%d", i + 1, self._epochs)
             
         for id_, data in enumerate(train_dataloader):
             self.optimizerAE.zero_grad()
@@ -206,13 +206,16 @@ class TVAE(BaseSynthesizer):
 
         steps = n // self.batch_size + 1
         data = []
-        for _ in range(steps):
-            mean = torch.zeros(self.batch_size, self.embedding_dim)
-            std = mean + 1
-            noise = torch.normal(mean=mean, std=std).to(self._device)
-            fake, sigmas = self.decoder(noise)
-            fake = torch.tanh(fake)
-            data.append(fake.detach().cpu())
+        with torch.no_grad():
+            for _ in range(steps):
+                mean = torch.zeros(self.batch_size, self.embedding_dim)
+                std = mean + 1
+                noise = torch.normal(mean=mean, std=std).to(self._device)
+                fake, sigmas = self.decoder(noise)
+                fake = torch.tanh(fake)
+                data.append(fake.cpu())
+
+        self.decoder.train()
 
         data = torch.cat(data, dim=0)
         data = data[:n]
@@ -235,8 +238,9 @@ class TVAE(BaseSynthesizer):
         self.decoder = Decoder(self.embedding_dim, self.decompress_dims, data_dim).to(self._device)
         self.optimizerAE = Adam(
             list(self.encoder.parameters()) + list(self.decoder.parameters()),
+            lr=self.learning_rate,
             weight_decay=self.l2scale)
-        
+
         self.model_loaded=True
         
   def get_state(self):
@@ -263,6 +267,7 @@ class TVAE(BaseSynthesizer):
       self.decoder = Decoder(self.embedding_dim, self.decompress_dims, data_dim).to(self._device)
       self.optimizerAE = Adam(
             list(self.encoder.parameters()) + list(self.decoder.parameters()),
+            lr=self.learning_rate,
             weight_decay=self.l2scale)
       
       self.encoder.load_state_dict(state['encoder'])

@@ -122,8 +122,13 @@ def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device):
         syn_cat = []
         for pred in x_hat_cat:
             syn_cat.append(pred.argmax(dim=-1))
-        syn_cat = torch.stack(syn_cat).t().cpu().numpy()
-        syn_cat = cat_inverse(syn_cat)
+
+        # Handle case where x_hat_cat is empty (no actual categorical features, only categorical target)
+        if len(syn_cat) > 0:
+            syn_cat = torch.stack(syn_cat).t().cpu().numpy()
+            syn_cat = cat_inverse(syn_cat)
+        else:
+            syn_cat = torch.empty((syn_data.shape[0], 0)).cpu().numpy()
     else:
         syn_cat = torch.empty((syn_data.shape[0], 0)).cpu().numpy()  # Empty array for syn_cat
 

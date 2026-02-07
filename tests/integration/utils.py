@@ -175,12 +175,24 @@ def create_test_dataframe():
 
 def load_sandbox_datasets():
     """
-    Load all CSV files from the sandbox_datasets directory
-    
+    Load all CSV files from the dataset directory
+
+    Uses DATASET_PATH environment variable if set, otherwise falls back to
+    the local test_data/sandbox_datasets directory.
+
     Returns:
         dict: Dictionary mapping dataset names to pandas DataFrames
     """
-    sandbox_dir = os.path.join(os.path.dirname(__file__), 'test_data', 'sandbox_datasets')
+    # Try DATASET_PATH from environment first
+    dataset_path = os.environ.get('DATASET_PATH')
+    if dataset_path:
+        # Expand ~ if present
+        sandbox_dir = os.path.expanduser(dataset_path)
+    else:
+        # Fall back to local test data directory
+        sandbox_dir = os.path.join(os.path.dirname(__file__), 'test_data', 'sandbox_datasets')
+
+    print(f"Looking for datasets in: {sandbox_dir}")
     datasets = {}
     
     # Find all CSV files in the sandbox directory

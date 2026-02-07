@@ -1,41 +1,32 @@
-# Core dependencies - CRITICAL: Use exact versions for compatibility
-torch>=2.2.0                       # Pinned as requested by user
-torchvision>=0.17.0.1              # Compatible with PyTorch 2.3.1
+# =============================================================================
+# Base Requirements - Core packages for all models
+# =============================================================================
+# Install: pip install -r requirements.txt
+#
+# This provides: Identity, CART, DPCART, SMOTE, AIM (CPU models)
+# For GPU models: pip install -r requirements-gpu.txt
+# For CPU torch:  pip install -r requirements-cpu.txt
+# For synthcity:  pip install -r requirements-synthcity.txt
+# =============================================================================
+
+# Data handling
 pandas>=2.0.0
-numpy<=2.0.0
-scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
-scipy==1.11.4                    # Downgraded for TabSyn _lazywhere compatibility
+numpy>=1.26.4,<2.0.0
 
-# Essential dependencies for most synthesizers
+# Machine learning
+scikit-learn>=1.7.2
+scipy>=1.11.4
+imbalanced-learn>=0.14.1
+
+# Encoding
 category_encoders>=2.6.0
-tomli>=2.0.0
-tomli_w>=1.2.0                   # Required for TabSyn
-imbalanced-learn==0.14.0         # Upgraded for sklearn 1.7.2 compatibility
-icecream>=2.1.0                  # Required for TabSyn debugging output
 
-# For TabDDPM and TabSyn synthesizers - COMMENTED OUT: Use zero_workaround.py instead
-# zero_workaround.py provides 100% functional replacement with subprocess compatibility
-#libzero==0.0.8
-
-# Development and testing
-pytest>=7.0.0
+# Utilities
 tqdm>=4.60.0
-
-# LTM (Latent Table Model) dependencies
-transformers>=4.0.0
-datasets>=2.0.0
-accelerate>=0.20.0
-ema-pytorch>=0.7.0
-boto3>=1.26.0                    # Required for LTM S3 storage backend
-
-# Synthcity models (BayesianNetwork, GREAT, ARF, NFlow)
-# INSTALLED MANUALLY IN DOCKERFILE TO BYPASS TORCH VERSION CHECK
-# synthcity>=0.2.12                # External package for advanced synthesizers
-
+tomli>=2.0.0
+tomli_w>=1.2.0
+icecream>=2.1.0
 seaborn
 
-# Optional: For AIM synthesizer (requires complex private-pgm setup)
-# Currently disabled due to dependency complexity
-# opendp==0.7.0
-# autodp==0.2
-# private-pgm @ git+https://github.com/ryan112358/private-pgm.git
+# Testing
+pytest>=7.0.0

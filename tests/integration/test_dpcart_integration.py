@@ -13,14 +13,14 @@ from stg.tableSynthesizer import TableSynthesizer
 def create_test_dataframe():
     """Create a simple test DataFrame for testing DPCART"""
     np.random.seed(42)  # For reproducible tests
-    
+
     df = pd.DataFrame({
-        'numeric_col': np.random.randn(100),
+        'numeric_col': np.random.randn(100).astype(np.float64),
         'categorical_col': np.random.choice(['A', 'B', 'C'], 100),
-        'binary_col': np.random.choice([0, 1], 100),
-        'float_col': np.random.uniform(0, 1, 100)
+        'binary_col': np.random.choice([0, 1], 100).astype(np.int64),
+        'float_col': np.random.uniform(0, 1, 100).astype(np.float64)
     })
-    
+
     return df
 
 

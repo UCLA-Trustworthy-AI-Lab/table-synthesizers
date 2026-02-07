@@ -12,11 +12,17 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+<<<<<<< Updated upstream
 # vscode
 .vscode/
+=======
+# wandb
+wandb/
+>>>>>>> Stashed changes
 
 # Input preprocessed datasets
 datasets/
+dataset/
 
 # Output training datasets
 outputs/
@@ -36,6 +42,7 @@ presentation/*
 
 core
 
+<<<<<<< Updated upstream
 # Config
 config/
 
@@ -44,6 +51,10 @@ data/
 
 # example
 example/
+=======
+# Patch 
+patches/
+>>>>>>> Stashed changes
 
 # AGENTS.md
 AGENTS.md
@@ -65,6 +76,7 @@ venv/
 env/
 .venv/
 .env/
+.env
 workspace/*
 example/test_results/*
 example/workspace/*
@@ -181,6 +193,9 @@ instance/
 
 # Scrapy stuff:
 .scrapy
+
+# General Docs
+docs/
 
 # Sphinx documentation
 docs/_build/

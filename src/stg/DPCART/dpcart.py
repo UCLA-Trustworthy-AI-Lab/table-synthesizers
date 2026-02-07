@@ -156,6 +156,14 @@ def cart_synthesizer_dp_pruned(
     print("Generating synthetic rows...")
     rand_indices = np.random.randint(0, len(df_encoded), size=n_rows)
     synth_data = df_encoded.iloc[rand_indices].copy()
+    # Ensure numeric columns use float64 to avoid dtype assignment errors
+    for col in numeric_cols:
+        if col in synth_data.columns:
+            synth_data[col] = synth_data[col].astype(np.float64)
+    # Ensure categorical columns use int64 to avoid dtype assignment errors
+    for col in categorical_cols:
+        if col in synth_data.columns:
+            synth_data[col] = synth_data[col].astype(np.int64)
 
     # -------- UNCHANGED LOGIC: overwrite each column via its (now DP-pruned) tree --------
     batch_size = 1000

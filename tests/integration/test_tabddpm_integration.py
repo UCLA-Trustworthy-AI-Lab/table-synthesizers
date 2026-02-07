@@ -39,19 +39,19 @@ def test_TabDDPM_sandbox_insurance():
     run_sandbox_dataset_test('TabDDPM', 'insurance', n_samples=50, sample_ratio=0.1)
 
 
-def test_TabDDPM_sandbox_adult():
-    """Test TabDDPM on adult dataset with many categorical features"""
-    run_sandbox_dataset_test('TabDDPM', 'adult', n_samples=50, sample_ratio=0.05)
+def test_TabDDPM_sandbox_titanic():
+    """Test TabDDPM on Titanic dataset with mixed categorical/numerical data"""
+    run_sandbox_dataset_test('TabDDPM', 'Titanic', n_samples=50, sample_ratio=0.2)
 
 
-def test_TabDDPM_sandbox_covtype():
-    """Test TabDDPM on covtype dataset with binary features"""
-    run_sandbox_dataset_test('TabDDPM', 'covtype', n_samples=50, sample_ratio=0.01)
+def test_TabDDPM_sandbox_bean():
+    """Test TabDDPM on Bean dataset for classification"""
+    run_sandbox_dataset_test('TabDDPM', 'Bean', n_samples=50, sample_ratio=0.05)
 
 if __name__ == "__main__":
     test_TabDDPM(load_and_process_data())
-    
+
     # Test sandbox datasets
     test_TabDDPM_sandbox_insurance()
-    test_TabDDPM_sandbox_adult()
-    test_TabDDPM_sandbox_covtype()
+    test_TabDDPM_sandbox_titanic()
+    test_TabDDPM_sandbox_bean()

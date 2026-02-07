@@ -42,13 +42,13 @@ def test_identity_sandbox_insurance():
     run_sandbox_dataset_test('Identity', 'insurance', n_samples=50, sample_ratio=0.2)
 
 
-def test_identity_sandbox_adult():
-    """Test Identity on adult dataset"""
-    run_sandbox_dataset_test('Identity', 'adult', n_samples=50, sample_ratio=0.1)
+def test_identity_sandbox_titanic():
+    """Test Identity on Titanic dataset with mixed categorical/numerical data"""
+    run_sandbox_dataset_test('Identity', 'Titanic', n_samples=50, sample_ratio=0.2)
 
 
-def test_identity_sandbox_covtype():
-    """Test Identity on covtype dataset"""
-    run_sandbox_dataset_test('Identity', 'covtype', n_samples=50, sample_ratio=0.01)
+def test_identity_sandbox_bean():
+    """Test Identity on Bean dataset for classification"""
+    run_sandbox_dataset_test('Identity', 'Bean', n_samples=50, sample_ratio=0.05)
 
 

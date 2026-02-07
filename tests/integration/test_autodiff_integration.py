@@ -10,10 +10,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from stg.tableSynthesizer import TableSynthesizer
 from utils import run_sandbox_dataset_test
 
-# Check if AutoDiff is available
+# Check if AutoDiff is actually available (dependencies installed)
 try:
-    from stg.tableSynthesizer import DEFAULT_MODELS
-    AUTODIFF_AVAILABLE = 'AutoDiff' in DEFAULT_MODELS
+    from stg.AutoDiff.autodiff_synthesizer import AUTODIFF_AVAILABLE
 except ImportError:
     AUTODIFF_AVAILABLE = False
 
@@ -107,11 +106,11 @@ def test_AutoDiff_sandbox_insurance():
     run_sandbox_dataset_test('AutoDiff', 'insurance', config=config, n_samples=50, sample_ratio=0.1)
 
 
-@pytest.mark.skipif(not AUTODIFF_AVAILABLE, reason="AutoDiff not available due to missing dependencies") 
-def test_AutoDiff_sandbox_adult():
-    """Test AutoDiff on adult dataset"""
+@pytest.mark.skipif(not AUTODIFF_AVAILABLE, reason="AutoDiff not available due to missing dependencies")
+def test_AutoDiff_sandbox_titanic():
+    """Test AutoDiff on Titanic dataset"""
     config = {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 16}
-    run_sandbox_dataset_test('AutoDiff', 'adult', config=config, n_samples=50, sample_ratio=0.05)
+    run_sandbox_dataset_test('AutoDiff', 'Titanic', config=config, n_samples=50, sample_ratio=0.2)
 
 
 def test_AutoDiff_availability():
@@ -132,4 +131,4 @@ if __name__ == "__main__":
         
         # Test sandbox datasets
         test_AutoDiff_sandbox_insurance()
-        test_AutoDiff_sandbox_adult()
+        test_AutoDiff_sandbox_titanic()

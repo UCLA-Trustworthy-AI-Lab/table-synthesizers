@@ -46,19 +46,19 @@ def test_PATECTGAN_sandbox_insurance():
     run_sandbox_dataset_test('PATECTGAN', 'insurance', n_samples=50, sample_ratio=0.1)
 
 
-def test_PATECTGAN_sandbox_adult():
-    """Test PATECTGAN on adult dataset (CTGAN not available, using PATECTGAN instead)"""
-    run_sandbox_dataset_test('PATECTGAN', 'adult', n_samples=50, sample_ratio=0.05)
+def test_PATECTGAN_sandbox_titanic():
+    """Test PATECTGAN on Titanic dataset (CTGAN not available, using PATECTGAN instead)"""
+    run_sandbox_dataset_test('PATECTGAN', 'Titanic', n_samples=50, sample_ratio=0.2)
 
 
-def test_PATECTGAN_sandbox_covtype():
-    """Test PATECTGAN on covtype dataset (CTGAN not available, using PATECTGAN instead)"""
-    run_sandbox_dataset_test('PATECTGAN', 'covtype', n_samples=50, sample_ratio=0.01)
+def test_PATECTGAN_sandbox_bean():
+    """Test PATECTGAN on Bean dataset (CTGAN not available, using PATECTGAN instead)"""
+    run_sandbox_dataset_test('PATECTGAN', 'Bean', n_samples=50, sample_ratio=0.05)
 
 if __name__ == "__main__":
     test_CTGAN(load_and_process_data())
-    
+
     # Test sandbox datasets with PATECTGAN (CTGAN replacement)
     test_PATECTGAN_sandbox_insurance()
-    test_PATECTGAN_sandbox_adult()
-    test_PATECTGAN_sandbox_covtype()
+    test_PATECTGAN_sandbox_titanic()
+    test_PATECTGAN_sandbox_bean()

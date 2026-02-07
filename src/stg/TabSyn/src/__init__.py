@@ -1,7 +1,11 @@
 import torch
+import os
 from icecream import install
 
-torch.set_num_threads(1)
+# Allow configurable threading via environment variable
+# Default to 1 for TabSyn compatibility, but can be overridden
+num_threads = int(os.environ.get('TABSYN_NUM_THREADS', os.environ.get('OMP_NUM_THREADS', '1')))
+torch.set_num_threads(num_threads)
 install()
 
 from . import env  # noqa

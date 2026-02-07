@@ -1,0 +1,7 @@
+{
+    "model_type": "cpu",
+    "description": "Adversarial Random Forest - Combines adversarial training with random forest-based generation",
+    "backend": "synthcity",
+    "speedup": "1x",
+    "quality": "Good"
+}

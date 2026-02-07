@@ -11,10 +11,11 @@ CONDA_ENV="table-synthesizers"
 
 # Test categories
 CORE_ALGORITHMS=("identity" "TVAE" "TabDDPM")
-STABLE_ALGORITHMS=("CART" "DPCART" "SMOTE")
+STABLE_ALGORITHMS=("CART" "DPCART" "SMOTE" "ARF" "BayesianNetwork" "GREAT" "NFlow")
 EXPERIMENTAL_ALGORITHMS=("TabSyn" "AutoDiff" "CTGAN" "PATECTGAN")
-OPTIONAL_ALGORITHMS=("AIM" "ARF" "BayesianNetwork" "GREAT" "NFlow")
-LTM_TESTS=("test_ltm_integration_basic" "test_ltm_training_only" "test_ltm_vae_final" "test_ltm_vae_integration")
+OPTIONAL_ALGORITHMS=("AIM")
+# LTM tests - currently only unit test available, integration tests not yet implemented
+LTM_TESTS=("ltm_vae")  # Maps to tests/unit/test_ltm_vae.py
 LIBZERO_TESTS=("test_libzero_workaround" "test_libzero_proof" "test_affected_modules" "test_pytorch_compatibility")
 
 # Colors for output
@@ -63,13 +64,26 @@ setup_environment() {
     source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate "$CONDA_ENV" || {
         log_error "Failed to activate conda environment: $CONDA_ENV"
-        log_info "Creating environment with Python 3.10 (required for LTM-VAE)..."
-        conda create -n "$CONDA_ENV" python=3.10 -y
+        log_info "Creating environment with Python 3.11 (required for LTM-VAE)..."
+        conda create -n "$CONDA_ENV" python=3.11 -y
         conda activate "$CONDA_ENV"
     }
 
     # Set up Python path for all modules
-    export PYTHONPATH="$SCRIPT_DIR/src:$SCRIPT_DIR/src/stg/LTM-VAE/src:$PYTHONPATH"
+    export PYTHONPATH="$SCRIPT_DIR/src:$PYTHONPATH"
+
+    # Load environment variables from .env
+    if [[ -f "$SCRIPT_DIR/.env" ]]; then
+        source "$SCRIPT_DIR/.env"
+        # Expand tilde in DATASET_PATH and export
+        if [[ -n "$DATASET_PATH" ]]; then
+            DATASET_PATH="${DATASET_PATH/#\~/$HOME}"
+            export DATASET_PATH
+            log_info "DATASET_PATH: $DATASET_PATH"
+        fi
+    else
+        log_warning ".env file not found, some tests may fail"
+    fi
 
     log_success "Environment activated"
     log_info "Python version: $(python --version)"
@@ -155,8 +169,8 @@ run_test() {
         # Infrastructure tests
         python "$test_path" || return 1
     else
-        # Algorithm tests - use pytest
-        pytest "$test_path" -v || return 1
+        # Algorithm tests - use pytest via python -m to ensure correct environment
+        python -m pytest "$test_path" -v || return 1
     fi
 
     log_success "✅ $test_name passed"

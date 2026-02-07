@@ -6,7 +6,6 @@ import torch
 from torch import optim
 import pandas as pd
 
-from torch import optim
 from torch.nn import functional
 
 import warnings
@@ -111,7 +110,6 @@ class CTGAN(BaseSynthesizer):
     std = mean + 1
 
     steps_per_epoch = max(len(train_dataloader), 1)
-    torch.autograd.set_detect_anomaly(True)
 
     for i in range(epochs):
         # Update the number of remaining epoch.

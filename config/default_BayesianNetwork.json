@@ -1,0 +1,7 @@
+{
+    "model_type": "cpu",
+    "description": "Bayesian Network - Learns conditional dependencies between columns",
+    "backend": "synthcity",
+    "speedup": "1x",
+    "quality": "Good"
+}

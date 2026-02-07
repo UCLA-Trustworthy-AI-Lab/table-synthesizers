@@ -11,10 +11,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from stg.tableSynthesizer import TableSynthesizer
 from utils import run_sandbox_dataset_test
 
-# Check if TabSyn is available
+# Check if TabSyn is actually available (dependencies installed)
 try:
-    from stg.tableSynthesizer import DEFAULT_MODELS
-    TABSYN_AVAILABLE = 'TabSyn' in DEFAULT_MODELS
+    from stg.TabSyn.tabsyn_synthesizer import TABSYN_AVAILABLE
 except ImportError:
     TABSYN_AVAILABLE = False
 
@@ -123,10 +122,10 @@ def test_TabSyn_sandbox_insurance():
     run_sandbox_dataset_test('TabSyn', 'insurance', n_samples=50, sample_ratio=0.1)
 
 
-@pytest.mark.skipif(not TABSYN_AVAILABLE, reason="TabSyn not available due to missing dependencies") 
-def test_TabSyn_sandbox_adult():
-    """Test TabSyn on adult dataset"""
-    run_sandbox_dataset_test('TabSyn', 'adult', n_samples=50, sample_ratio=0.05)
+@pytest.mark.skipif(not TABSYN_AVAILABLE, reason="TabSyn not available due to missing dependencies")
+def test_TabSyn_sandbox_titanic():
+    """Test TabSyn on Titanic dataset"""
+    run_sandbox_dataset_test('TabSyn', 'Titanic', n_samples=50, sample_ratio=0.2)
 
 
 def test_TabSyn_availability():

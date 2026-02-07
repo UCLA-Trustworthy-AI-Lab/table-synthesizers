@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import subprocess
+import sys
 import os
 import tempfile
 import time
@@ -81,46 +82,78 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Prepare the dataset
             prep_start = time.time()
             print("[TabSyn][train] Preparing dataset and metadata...", flush=True)
-            task_type = infer_task_type(train_data)
+
             # Infer task type using the DataFrame to correctly detect categorical targets
-            # task_type = infer_task_type(train_data)
-            create_dataset_with_metadata(train_data, self.dataset_name, task_type)
+            task_type = infer_task_type(train_data)
+
+            # Encode categorical columns before converting to numpy
+            train_data_encoded = train_data.copy()
+            for col in train_data_encoded.columns:
+                if train_data_encoded[col].dtype == 'object' or isinstance(train_data_encoded[col].dtype, pd.CategoricalDtype):
+                    # Convert categorical to numeric codes
+                    train_data_encoded[col] = pd.Categorical(train_data_encoded[col]).codes
+
+            create_dataset_with_metadata(train_data_encoded.values, self.dataset_name, task_type)
             process_data(self.dataset_name)
             print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
             
             # Step 1: Train the VAE model
             vae_start = time.time()
             print("[TabSyn][train] Starting VAE training subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "vae",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][VAE stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][VAE stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"VAE training subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][train] VAE training finished in {time.time()-vae_start:.2f}s", flush=True)
             
             # Step 2: Train the diffusion model
             diff_start = time.time()
             print("[TabSyn][train] Starting diffusion training subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][Diffusion stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][Diffusion stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Diffusion training subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             self.trained = True
             print(f"[TabSyn][train] Completed in {time.time()-start_total:.2f}s", flush=True)
             
         except Exception as e:
-            print(f"TabSyn training error: {e}")
+            print(f"TabSyn training error: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             raise RuntimeError(f"TabSyn training failed: {e}")
-        
+
         finally:
-            pass
-        
+            # Always restore original directory
+            os.chdir(original_dir)
+            print(f"[TabSyn][train] Restored working directory to {os.getcwd()}", flush=True)
+
         self.stop_threading()
     
     def _train(self, train_data):
@@ -158,13 +191,23 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Generate synthetic data
             subp_start = time.time()
             print("[TabSyn][sample] Starting sampling subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "sample",
                 "--save_path", save_path
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][Sample stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][Sample stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Sampling subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][sample] Sampling subprocess finished in {time.time()-subp_start:.2f}s", flush=True)
             
             # Load synthetic data

@@ -15,7 +15,7 @@ from .data_manager import DataManager
 from .config_manager import ConfigManager
 
 # Import DataLoader for file loading
-from ..data_loader import DataLoader as FileDataLoader
+from src.data_loader import DataLoader as FileDataLoader
 
 class BaseSynthesizer:
   """
@@ -244,13 +244,105 @@ class BaseSynthesizer:
     raise NotImplementedError("Generating method need to be implemented by child synthesizers!")
 
   def set_device(self, device=None):
-        """Set the `device` to be used ('GPU' or 'CPU)."""
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            self._device = self.device  # Also set _device for compatibility
+        """
+        Set the device to be used for training ('cuda', 'mps', 'cpu', or 'auto').
+
+        Args:
+            device (str or torch.device): Device to use. Options:
+                - 'cuda': Use NVIDIA GPU (requires CUDA)
+                - 'mps': Use Apple Silicon GPU (requires macOS with M1/M2/M3)
+                - 'cpu': Use CPU
+                - 'auto': Automatically detect best available device
+                - None: Same as 'auto'
+                - torch.device: Directly provide torch device object
+
+        Note:
+            For GPU training, ensure PyTorch is installed with CUDA support:
+            - CUDA 13.0+ for Blackwell (SM 12.1+): pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu130
+            - CUDA 12.4 for most GPUs: pip install torch --index-url https://download.pytorch.org/whl/cu124
+        """
+        if device is None or device == 'auto':
+            # Auto-detect best device
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logging.info(f"Using CUDA GPU: {gpu_name} ({gpu_memory:.1f} GB)")
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = torch.device("mps")
+                logging.info("Using Apple Silicon GPU (MPS)")
+            else:
+                self.device = torch.device("cpu")
+                logging.info("Using CPU (GPU not available)")
+        elif isinstance(device, str):
+            if device == 'cuda':
+                if not torch.cuda.is_available():
+                    logging.warning("CUDA requested but not available. Falling back to CPU.")
+                    self.device = torch.device("cpu")
+                else:
+                    self.device = torch.device("cuda")
+                    gpu_name = torch.cuda.get_device_name(0)
+                    gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                    logging.info(f"Using CUDA GPU: {gpu_name} ({gpu_memory:.1f} GB)")
+            elif device == 'mps':
+                if not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
+                    logging.warning("MPS requested but not available. Falling back to CPU.")
+                    self.device = torch.device("cpu")
+                else:
+                    self.device = torch.device("mps")
+                    logging.info("Using Apple Silicon GPU (MPS)")
+            elif device == 'cpu':
+                self.device = torch.device("cpu")
+                logging.info("Using CPU")
+            else:
+                logging.warning(f"Unknown device '{device}'. Using auto-detection.")
+                self.set_device('auto')
+                return
         else:
+            # torch.device object provided
             self.device = device
-            self._device = device  # Also set _device for compatibility
+            logging.info(f"Using device: {device}")
+
+        # Set _device for backward compatibility
+        self._device = self.device
+
+  def get_optimal_batch_size(self, dataset_size, default_batch_size=128):
+        """
+        Calculate optimal batch size based on GPU memory and dataset size.
+
+        Args:
+            dataset_size (int): Number of samples in the dataset
+            default_batch_size (int): Default batch size if GPU not available
+
+        Returns:
+            int: Recommended batch size
+
+        Note:
+            This is a heuristic. Actual optimal batch size depends on model architecture.
+        """
+        if not hasattr(self, 'device'):
+            self.set_device('auto')
+
+        if self.device.type == 'cuda':
+            gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+
+            # Heuristic: adjust batch size based on GPU memory
+            if gpu_memory_gb >= 80:  # High-end GPUs (A100, H100, GB10, etc.)
+                batch_size = min(512, dataset_size // 2)
+            elif gpu_memory_gb >= 40:  # Mid-high GPUs (A6000, RTX 6000, etc.)
+                batch_size = min(256, dataset_size // 4)
+            elif gpu_memory_gb >= 16:  # Consumer high-end (RTX 4090, RTX 3090, etc.)
+                batch_size = min(128, dataset_size // 8)
+            elif gpu_memory_gb >= 8:   # Consumer mid-range (RTX 4070, RTX 3070, etc.)
+                batch_size = min(64, dataset_size // 10)
+            else:                       # Entry-level GPUs
+                batch_size = min(32, dataset_size // 10)
+
+            logging.info(f"Recommended batch size for {gpu_memory_gb:.1f}GB GPU: {batch_size}")
+            return batch_size
+        else:
+            # CPU or MPS - use conservative batch size
+            return min(default_batch_size, dataset_size // 10)
   
   def set_seed(self, seed: int = None):
     """Set random seeds for reproducibility across torch, numpy, and python's random."""

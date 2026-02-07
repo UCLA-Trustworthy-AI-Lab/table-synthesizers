@@ -147,21 +147,34 @@ def log_sum_exp_by_classes(x, slices):
 @torch.jit.script
 def log_sub_exp(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     m = torch.maximum(a, b)
-    return torch.log(torch.exp(a - m) - torch.exp(b - m)) + m
+    # Clamp the difference before exp to prevent underflow/overflow
+    diff_a = torch.clamp(a - m, min=-50, max=50)
+    diff_b = torch.clamp(b - m, min=-50, max=50)
+    # Ensure the subtraction result is non-negative by adding epsilon
+    result = torch.log(torch.clamp(torch.exp(diff_a) - torch.exp(diff_b), min=1e-30)) + m
+    return result
 
 @torch.jit.script
 def sliced_logsumexp(x, slices):
+    # Clamp input to prevent NaN values during logcumsumexp
+    # Use a large negative value instead of -inf to avoid numerical issues
+    x_clamped = torch.clamp(x, min=-1e10, max=1e10)
+
     lse = torch.logcumsumexp(
-        torch.nn.functional.pad(x, [1, 0, 0, 0], value=-float('inf')),
+        torch.nn.functional.pad(x_clamped, [1, 0, 0, 0], value=-1e10),
         dim=-1)
 
     slice_starts = slices[:-1]
     slice_ends = slices[1:]
 
     slice_lse = log_sub_exp(lse[:, slice_ends], lse[:, slice_starts])
+
+    # Clamp result to prevent NaN propagation
+    slice_lse = torch.clamp(slice_lse, min=-1e10, max=1e10)
+
     slice_lse_repeated = torch.repeat_interleave(
         slice_lse,
-        slice_ends - slice_starts, 
+        slice_ends - slice_starts,
         dim=-1
     )
     return slice_lse_repeated
