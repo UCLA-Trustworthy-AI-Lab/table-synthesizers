@@ -16,16 +16,39 @@ except ImportError:
 class ARFSynthesizer(BaseSynthesizer):
     """
     ARF (Adversarial Random Forest) synthesizer for tabular data generation.
-    
-    This synthesizer uses synthcity's ARF implementation which combines 
+
+    This synthesizer uses synthcity's ARF implementation which combines
     adversarial training with random forest-based generation.
     Only supports DataFrame input (not DataLoader).
+
+    Synthcity plugin parameters (passed via config dict):
+        num_trees (int): Number of trees in the forest. Default: 30.
+        delta (float): Convergence threshold. Default: 0.
+        max_iters (int): Maximum training iterations. Default: 10.
+        early_stop (bool): Enable early stopping. Default: True.
+        verbose (bool): Print progress. Default: True.
+        min_node_size (int): Minimum leaf node size. Default: 5.
+        random_state (int): Random seed. Default: 0.
+        sampling_patience (int): Max retries for schema-valid sampling. Default: 500.
     """
-    
+
+    # Parameters that synthcity's ARF plugin accepts
+    _SYNTHCITY_PARAMS = {
+        'num_trees', 'delta', 'max_iters', 'early_stop', 'verbose',
+        'min_node_size', 'random_state', 'sampling_patience',
+    }
+
     def __init__(self, data_info=None, **kwargs):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for ARFSynthesizer. "
                             "Install it with: pip install synthcity")
+
+        # Extract synthcity-specific params before passing to base class
+        self._synthcity_kwargs = {}
+        for key in list(kwargs.keys()):
+            if key in self._SYNTHCITY_PARAMS:
+                self._synthcity_kwargs[key] = kwargs.pop(key)
+
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
@@ -36,21 +59,30 @@ class ARFSynthesizer(BaseSynthesizer):
 
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("ARFSynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         self.stored_data = train_data.copy()
-        
+
+        # Build synthcity plugin kwargs
+        plugin_kwargs = dict(self._synthcity_kwargs)
+
+        if plugin_kwargs:
+            logger.info("ARF: using plugin params: %s", plugin_kwargs)
+
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("arf")
+        self.model = Plugins().get("arf", **plugin_kwargs)
         self.model.fit(loader)
-        
-        print(f"ARF: trained on {len(self.stored_data)} samples")
-        
+
+        logger.info("ARF: trained on %d samples", len(self.stored_data))
+
         self.stop_threading()
     
     def _train(self, train_data):

@@ -79,12 +79,35 @@ class GREATSynthesizer(BaseSynthesizer):
     This synthesizer uses synthcity's GREAT implementation which is a transformer-based
     generative model for mixed-type tabular data.
     Only supports DataFrame input (not DataLoader).
+
+    Synthcity plugin parameters (passed via config dict):
+        n_iter (int): Number of training iterations/epochs. Default: 100.
+        llm (str): Language model to use. Default: "distilgpt2".
+        batch_size (int): Training batch size. Default: 8.
+        experiment_dir (str): Directory for trainer output. Default: "trainer_great".
+        device (str): Device for training ("cpu" or "cuda"). Default: "cpu".
+        random_state (int): Random seed. Default: 0.
+        sampling_patience (int): Max retries for schema-valid sampling. Default: 500.
+        logging_epoch (int): Log every N epochs. Default: 100.
     """
+
+    # Parameters that synthcity's GREAT plugin accepts
+    _SYNTHCITY_PARAMS = {
+        'n_iter', 'llm', 'batch_size', 'experiment_dir',
+        'device', 'random_state', 'sampling_patience', 'logging_epoch',
+    }
 
     def __init__(self, data_info=None, **kwargs):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for GREATSynthesizer. "
                             "Install it with: pip install synthcity")
+
+        # Extract synthcity-specific params before passing to base class
+        self._synthcity_kwargs = {}
+        for key in list(kwargs.keys()):
+            if key in self._SYNTHCITY_PARAMS:
+                self._synthcity_kwargs[key] = kwargs.pop(key)
+
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
@@ -96,6 +119,9 @@ class GREATSynthesizer(BaseSynthesizer):
 
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("GREATSynthesizer only supports DataFrame input, not DataLoader")
 
@@ -104,12 +130,22 @@ class GREATSynthesizer(BaseSynthesizer):
 
         self.stored_data = train_data.copy()
 
+        # Build synthcity plugin kwargs
+        plugin_kwargs = dict(self._synthcity_kwargs)
+
+        # Map 'epochs' to 'n_iter' for consistency with other synthesizers
+        if hasattr(self, '_epochs') and self._epochs is not None and 'n_iter' not in plugin_kwargs:
+            plugin_kwargs['n_iter'] = self._epochs
+
+        if plugin_kwargs:
+            logger.info("GREAT: using plugin params: %s", plugin_kwargs)
+
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("great")
+        self.model = Plugins().get("great", **plugin_kwargs)
         self.model.fit(loader)
 
-        print(f"GREAT: trained on {len(self.stored_data)} samples")
+        logger.info("GREAT: trained on %d samples", len(self.stored_data))
 
         self.stop_threading()
 

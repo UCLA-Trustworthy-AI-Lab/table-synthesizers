@@ -3,5 +3,11 @@
     "description": "GeneRative fEAture Transformer - Transformer-based generative model for mixed-type tabular data",
     "backend": "synthcity",
     "speedup": "5-10x",
-    "quality": "High"
+    "quality": "High",
+    "n_iter": 100,
+    "llm": "distilgpt2",
+    "batch_size": 8,
+    "device": "cpu",
+    "random_state": 0,
+    "sampling_patience": 500
 }

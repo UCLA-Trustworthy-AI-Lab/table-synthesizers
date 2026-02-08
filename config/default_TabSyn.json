@@ -1,0 +1,8 @@
+{
+    "model_type": "gpu",
+    "epochs": 10,
+    "batch_size": 32,
+    "description": "Advanced tabular synthesis using VAE + Diffusion",
+    "speedup": "5-15x",
+    "quality": "High"
+}

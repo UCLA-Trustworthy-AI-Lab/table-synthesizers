@@ -59,12 +59,11 @@ patches/
 # AGENTS.md
 AGENTS.md
 
-# CLAUDE.md
-CLAUDE.md
-
 # text files
 *.md
 !README.md
+!docs/*.md
+!config/README.md
 *.txt
 
 # image
@@ -193,9 +192,6 @@ instance/
 
 # Scrapy stuff:
 .scrapy
-
-# General Docs
-docs/
 
 # Sphinx documentation
 docs/_build/

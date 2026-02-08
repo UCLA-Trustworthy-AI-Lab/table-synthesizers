@@ -166,6 +166,27 @@ See [config/README.md](config/README.md) for configuration details.
 | **BayesianNetwork** | Probabilistic | CPU | Bayesian network synthesis |
 | **GREAT** | Transformer | GPU | GeneRative fEAture Transformer |
 
+All synthcity models accept plugin-specific hyperparameters via the config dict:
+
+```python
+# Tune BayesianNetwork structure learning
+synthesizer = TableSynthesizer('BayesianNetwork', config={
+    'struct_learning_search_method': 'hillclimb',  # hillclimb, pc, tree_search
+    'struct_learning_score': 'bic',                # bdeu, bds, bic, k2
+    'struct_max_indegree': 6,
+    'encoder_max_clusters': 20,
+})
+
+# Tune GREAT transformer training
+synthesizer = TableSynthesizer('GREAT', config={
+    'n_iter': 200,
+    'batch_size': 16,
+    'device': 'cuda',
+})
+```
+
+See [docs/CLAUDE.md](docs/CLAUDE.md#synthcity-plugin-parameter-passthrough) for all available parameters.
+
 ## Repository Structure
 
 ```

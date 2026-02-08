@@ -339,10 +339,11 @@ def get_model_config(model_name, override_epochs=None):
         config = {'epochs': override_epochs or 50}
         return config
 
-    # Remove metadata fields
+    # Remove metadata fields (not model parameters)
     config.pop('description', None)
     config.pop('speedup', None)
     config.pop('quality', None)
+    config.pop('backend', None)
 
     # Override epochs if specified
     if override_epochs is not None:
@@ -1186,6 +1187,8 @@ WandB Integration Examples (NEW):
             'bn': 'BayesianNetwork',
             'GREAT': 'GREAT',
             'great': 'GREAT',
+            'GreaT': 'GREAT',
+            'Great': 'GREAT',
             'NFlow': 'NFlow',
             'nflow': 'NFlow',
             # 'LTM_VAE': 'LTM_VAE',
@@ -1199,7 +1202,22 @@ WandB Integration Examples (NEW):
 
             # Check if model is available
             if model_name not in DEFAULT_MODELS:
+                # Provide actionable diagnostics
+                synthcity_models = {'GREAT', 'ARF', 'NFlow', 'BayesianNetwork'}
+                gpu_models = {'CTGAN', 'TVAE', 'TabDDPM', 'PATECTGAN', 'AutoDiff', 'TabSyn', 'LTM_VAE'}
+                if model_name in synthcity_models:
+                    hint = "Install synthcity: pip install -r requirements-synthcity.txt"
+                    # Try to get the actual import error
+                    try:
+                        __import__(f"stg.{model_name}")
+                    except Exception as import_err:
+                        hint += f"\n       Import error: {import_err}"
+                elif model_name in gpu_models:
+                    hint = "Install torch: pip install -r requirements-gpu.txt (or requirements-cpu.txt)"
+                else:
+                    hint = f"Model '{model_name}' is not a recognized model name"
                 print(f"Warning: Model {model_input} (maps to {model_name}) not available, skipping")
+                print(f"  Hint: {hint}")
                 continue
 
             # Check if we have config for this model

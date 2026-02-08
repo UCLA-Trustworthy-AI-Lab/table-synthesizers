@@ -3,5 +3,13 @@
     "description": "Bayesian Network - Learns conditional dependencies between columns",
     "backend": "synthcity",
     "speedup": "1x",
-    "quality": "Good"
+    "quality": "Good",
+    "struct_learning_n_iter": 1000,
+    "struct_learning_search_method": "tree_search",
+    "struct_learning_score": "k2",
+    "struct_max_indegree": 4,
+    "encoder_max_clusters": 10,
+    "encoder_noise_scale": 0.1,
+    "random_state": 0,
+    "sampling_patience": 500
 }
