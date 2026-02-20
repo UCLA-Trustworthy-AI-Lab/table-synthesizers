@@ -292,7 +292,12 @@ class CTGAN(BaseSynthesizer):
         """Initialize data sampler, generator and synthesizers."""
         if self.model_loaded:
           return
-        
+
+        # Allow no-op initialization for checkpoint load flows in tests/callers
+        # that only need object scaffolding before `load_state`.
+        if train_dataloader is None:
+          return
+
         # Create transformer from data_info if needed
         if self._transformer is None and self.data_info is not None:
             self._transformer = TableTransformerInfo(self.data_info['transform_info'])
@@ -342,6 +347,9 @@ class CTGAN(BaseSynthesizer):
   def load_state(self, checkpoint):
       """Load state from checkpoint"""
       state = torch.load(checkpoint)
+
+      if not hasattr(self, '_device'):
+          self.set_device()
       
       data_dim = self._transformer.output_width
       

@@ -14,8 +14,30 @@ from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, LabelEncoder
 from .data_manager import DataManager
 from .config_manager import ConfigManager
 
-# Import DataLoader for file loading
-from src.data_loader import DataLoader as FileDataLoader
+# Import DataLoader for file loading.
+# Prefer package import (`data_loader`) for installed/test environments,
+# and fall back to local-src import for direct script execution.
+try:
+    from data_loader import DataLoader as FileDataLoader
+except ImportError:  # pragma: no cover - fallback path
+    try:
+        from src.data_loader import DataLoader as FileDataLoader
+    except ImportError:  # pragma: no cover - optional dependency
+        FileDataLoader = None
+
+
+class SimpleTensorDataset(torch.utils.data.Dataset):
+  """Pickle-safe dataset wrapper that returns tensor rows directly."""
+
+  def __init__(self, tensor):
+    self.tensor = tensor
+
+  def __len__(self):
+    return self.tensor.size(0)
+
+  def __getitem__(self, idx):
+    return self.tensor[idx]
+
 
 class BaseSynthesizer:
   """
@@ -381,15 +403,7 @@ class BaseSynthesizer:
     tensor_data = torch.tensor(encoded_df.values, dtype=torch.float32)
     
     # Create dataset and dataloader
-    # Create custom dataset that returns tensors directly (not tuples)
-    class SimpleTensorDataset(torch.utils.data.Dataset):
-        def __init__(self, tensor):
-            self.tensor = tensor
-        def __len__(self):
-            return self.tensor.size(0)
-        def __getitem__(self, idx):
-            return self.tensor[idx]
-    
+    # Note: dataset class is module-level to keep checkpoints pickle-safe.
     dataset = SimpleTensorDataset(tensor_data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     

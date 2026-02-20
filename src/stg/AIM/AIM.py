@@ -33,6 +33,25 @@ from ..base import BaseSynthesizer
 
 
 # Simplified Dataset class that doesn't require complex mbi internals
+class SimpleDomain:
+    """Pickle-safe lightweight domain object."""
+
+    def __init__(self, domain_dict):
+        self.attrs = list(domain_dict.keys())
+        self.domain_dict = domain_dict
+
+    def size(self, cols):
+        if isinstance(cols, str):
+            cols = [cols]
+        size = 1
+        for col in cols:
+            size *= self.domain_dict[col]
+        return size
+
+    def __len__(self):
+        return len(self.attrs)
+
+
 class SimpleDataset:
     def __init__(self, df, domain_dict, weights=None):
         """Simple dataset that works with basic domain info"""
@@ -40,24 +59,7 @@ class SimpleDataset:
         self.domain_dict = domain_dict
         self.weights = weights
         self.attrs = list(domain_dict.keys())
-        
-        # Create a simple domain object
-        class SimpleDomain:
-            def __init__(self, domain_dict):
-                self.attrs = list(domain_dict.keys())
-                self.domain_dict = domain_dict
-                
-            def size(self, cols):
-                if isinstance(cols, str):
-                    cols = [cols]
-                size = 1
-                for col in cols:
-                    size *= self.domain_dict[col]
-                return size
-                
-            def __len__(self):
-                return len(self.attrs)
-        
+
         self.domain = SimpleDomain(domain_dict)
     
     def project(self, cols):

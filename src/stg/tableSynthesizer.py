@@ -20,12 +20,21 @@ from .TVAE import TVAE
 # New synthesizers that only support DataFrame input
 from .CART import CARTSynthesizer
 from .DPCART import DPCARTSynthesizer
+from .TabDiff import TabDiffSynthesizer
+from .TabPFGen import TabPFGenSynthesizer
 try:
     from .SMOTE import SMOTESynthesizer
     SMOTE_AVAILABLE = True
 except ImportError:
     SMOTE_AVAILABLE = False
     logging.getLogger(__name__).warning("SMOTE not available due to missing dependencies (imbalanced-learn)")
+
+try:
+    from .GaussianCopula import GaussianCopulaSynthesizer
+    GAUSSIANCOPULA_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    GAUSSIANCOPULA_AVAILABLE = False
+    logging.getLogger(__name__).warning("GaussianCopula not available due to dependencies: %s", str(e))
 
 # New synthesizers from Gen_MIA experiments
 try:
@@ -86,7 +95,9 @@ DEFAULT_MODELS = {"Identity":Identity,
                   "PATECTGAN":PATECTGAN,
                   "TVAE":TVAE,
                   "CART":CARTSynthesizer,
-                  "DPCART":DPCARTSynthesizer}
+                  "DPCART":DPCARTSynthesizer,
+                  "TabDiff": TabDiffSynthesizer,
+                  "TabPFGen": TabPFGenSynthesizer}
 
 if TABDDPM_AVAILABLE:
     DEFAULT_MODELS["TabDDPM"] = TabDDPM
@@ -96,6 +107,9 @@ if AIM_AVAILABLE:
 
 if SMOTE_AVAILABLE:
     DEFAULT_MODELS["SMOTE"] = SMOTESynthesizer
+
+if GAUSSIANCOPULA_AVAILABLE:
+    DEFAULT_MODELS["GaussianCopula"] = GaussianCopulaSynthesizer
 
 if BAYESIANNETWORK_AVAILABLE:
     DEFAULT_MODELS["BayesianNetwork"] = BayesianNetworkSynthesizer

@@ -46,7 +46,7 @@ def _patch_great_trainer():
 
             logging.info("Convert data into HuggingFace dataset object...")
             great_ds = GReaTDataset.from_pandas(df)
-            great_ds.set_tokenizer(self.tokenizer, self.float_precision)
+            great_ds.set_tokenizer(self.tokenizer)
 
             logging.info("Create GReaT Trainer...")
             training_args = TrainingArguments(
