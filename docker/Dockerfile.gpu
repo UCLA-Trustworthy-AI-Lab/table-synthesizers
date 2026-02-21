@@ -1,0 +1,45 @@
+# Tier 2 - GPU/PyTorch models
+# Models: CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen, TabDiff
+# PyTorch >= 2.9.1 with CUDA 13.x for Blackwell (SM 12.1)
+
+ARG CUDA_VERSION=13.0
+FROM nvidia/cuda:${CUDA_VERSION}.1-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# System dependencies + Python
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.11 python3.11-venv python3.11-dev python3-pip git && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install base requirements
+COPY requirements.txt requirements-gpu.txt ./
+RUN uv pip install --system -r requirements.txt
+
+# Install PyTorch with CUDA support
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
+RUN uv pip install --system torch torchvision --index-url ${TORCH_INDEX_URL}
+
+# Install GPU requirements
+RUN uv pip install --system -r requirements-gpu.txt
+
+# Install dev/test dependencies
+RUN uv pip install --system pytest
+
+# Copy project source
+COPY src/ src/
+COPY config/ config/
+COPY tests/ tests/
+COPY setup.cfg pyproject.toml ./
+
+# Install package in editable mode
+RUN uv pip install --system -e .
+
+# Default: run all non-synthcity tests
+CMD ["pytest", "-m", "not synthcity", "--ignore-glob=**/test_arf.py", "--ignore-glob=**/test_bayesian_network.py", "--ignore-glob=**/test_great.py", "--ignore-glob=**/test_nflow.py", "--ignore-glob=**/test_smote.py", "tests/", "-v", "--tb=short"]

@@ -1,0 +1,42 @@
+# Tier 3 - Synthcity models
+# Models: BayesianNetwork, ARF, GREAT, NFlow, GaussianCopula
+# Python 3.11 only (synthcity dependency compatibility)
+# CPU torch (synthcity models mostly CPU, except GREAT/NFlow)
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install base requirements
+COPY requirements.txt requirements-synthcity.txt ./
+RUN uv pip install --system -r requirements.txt
+
+# Install CPU-only PyTorch
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN uv pip install --system torch --index-url ${TORCH_INDEX_URL}
+
+# Install synthcity requirements (uses custom fork for compatibility)
+RUN uv pip install --system -r requirements-synthcity.txt
+
+# Install dev/test dependencies
+RUN uv pip install --system pytest
+
+# Copy project source
+COPY src/ src/
+COPY config/ config/
+COPY tests/ tests/
+COPY setup.cfg pyproject.toml ./
+
+# Install package in editable mode
+RUN uv pip install --system -e .
+
+# Default: run synthcity-marked tests
+CMD ["pytest", "-m", "synthcity", "tests/", "-v", "--tb=short"]
