@@ -5,6 +5,20 @@ on:
     branches: [ main, master, '*_test' ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      run_gpu:
+        description: 'Run GPU model tests (CPU fallback)'
+        type: boolean
+        default: false
+      run_synthcity:
+        description: 'Run synthcity model tests'
+        type: boolean
+        default: false
+      run_all:
+        description: 'Run all tiers (base + GPU + synthcity)'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,6 +27,7 @@ concurrency:
 jobs:
   # ---------------------------------------------------------------
   # Tier 1: Base CPU models (Identity, CART, DPCART, SMOTE, AIM)
+  # Always runs on push, PR, and manual dispatch
   # ---------------------------------------------------------------
   test-base:
     runs-on: ubuntu-latest
@@ -44,7 +59,7 @@ jobs:
 
     - name: Run base model tests
       run: |
-        pytest tests/ -m "not gpu and not synthcity" \
+        pytest tests/ -m "not gpu and not synthcity and not edge_synthcity and not edge_gpu" \
           --ignore-glob="**/test_arf.py" \
           --ignore-glob="**/test_bayesian_network.py" \
           --ignore-glob="**/test_great.py" \
@@ -54,8 +69,12 @@ jobs:
 
   # ---------------------------------------------------------------
   # Tier 2: GPU/PyTorch models (CPU fallback in CI)
+  # Manual only -- trigger via Actions > Run workflow > check "Run GPU"
   # ---------------------------------------------------------------
   test-gpu:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.run_gpu == 'true' || github.event.inputs.run_all == 'true')
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -88,7 +107,7 @@ jobs:
 
     - name: Run GPU model tests (CPU fallback)
       run: |
-        pytest tests/ -m "not synthcity" \
+        pytest tests/ -m "not synthcity and not edge_synthcity" \
           --ignore-glob="**/test_arf.py" \
           --ignore-glob="**/test_bayesian_network.py" \
           --ignore-glob="**/test_great.py" \
@@ -98,8 +117,12 @@ jobs:
 
   # ---------------------------------------------------------------
   # Tier 3: Synthcity models (Python 3.11 only)
+  # Manual only -- trigger via Actions > Run workflow > check "Run synthcity"
   # ---------------------------------------------------------------
   test-synthcity:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.run_synthcity == 'true' || github.event.inputs.run_all == 'true')
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -131,4 +154,4 @@ jobs:
 
     - name: Run synthcity model tests
       run: |
-        pytest tests/ -m "synthcity" -v --tb=short
+        pytest tests/ -m "synthcity or edge_synthcity" -v --tb=short
