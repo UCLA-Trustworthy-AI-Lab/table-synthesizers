@@ -1,45 +1,121 @@
-# Tier 2 - GPU/PyTorch models
-# Models: CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen, TabDiff
-# PyTorch >= 2.9.1 with CUDA 13.x for Blackwell (SM 12.1)
+# ─── Optimized GPU Image ───────────────────────────────────────────────────────
+# Tier 2: GPU/PyTorch models
+# Models: CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen,
+#         TabDiff
+# CUDA 13.0 — Blackwell SM121 compatible (also works on Hopper, Ampere)
+#
+# Key optimizations vs naive image:
+#  1. cuda:base instead of cuda:runtime → eliminates bundled NCCL (~1 GB saved)
+#  2. Multi-stage build — build tools stay in builder, not runtime
+#  3. Merged RUN layers → fewer layer diffs
+#  4. uv cache mounts → zero pip/uv cache in final image layers
+#  5. Strip __pycache__/.pyc/test dirs from site-packages
+# ───────────────────────────────────────────────────────────────────────────────
 
 ARG CUDA_VERSION=13.0
-FROM nvidia/cuda:${CUDA_VERSION}.1-runtime-ubuntu22.04
+
+# ── Stage 1: builder ───────────────────────────────────────────────────────────
+# cuda:base is ~400 MB vs cuda:runtime (~2 GB with NCCL/cuDNN headers)
+# PyTorch ships its own CUDA kernels; we don't need system NCCL unless using
+# multi-node distributed training.
+FROM nvidia/cuda:${CUDA_VERSION}.1-base-ubuntu22.04 AS builder
 
 WORKDIR /app
 
-# System dependencies + Python
+# Build-time deps: Python + compiler tools (NOT carried into runtime)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python3.11 python3.11-venv python3.11-dev python3-pip git && \
+    python3.11 python3.11-venv python3.11-dev python3-pip \
+    git build-essential && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python  python  /usr/bin/python3.11 1 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# uv binary (tiny, ~10 MB)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install base requirements
 COPY requirements.txt requirements-gpu.txt ./
-RUN uv pip install --system -r requirements.txt
 
-# Install PyTorch with CUDA support
+# 1. Install base requirements (scikit-learn, pandas, sdv, etc.)
+#    Use CPU-only torch as a placeholder so sdv/ctgan don't pull their own wheel.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system \
+    torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu && \
+    uv pip install --system -r requirements.txt
+
+# 2. Overwrite torch with the real CUDA wheel (as a separate layer for caching)
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
-RUN uv pip install --system torch torchvision --index-url ${TORCH_INDEX_URL}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --force-reinstall \
+    "torch>=2.7.0" "torchvision>=0.22.0" \
+    --index-url ${TORCH_INDEX_URL}
 
-# Install GPU requirements
-RUN uv pip install --system -r requirements-gpu.txt
+# 3. GPU-specific extras (transformers, datasets, accelerate, ema-pytorch, boto3)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system pytest && \
+    uv pip install --system \
+    "transformers>=4.0.0" \
+    "datasets>=2.0.0" \
+    "accelerate>=0.20.0" \
+    "ema-pytorch>=0.7.0" \
+    "boto3>=1.26.0"
 
-# Install dev/test dependencies
-RUN uv pip install --system pytest
-
-# Copy project source
+# 4. Copy source and install package
 COPY src/ src/
-COPY config/ config/
-COPY tests/ tests/
 COPY setup.cfg pyproject.toml ./
 
-# Install package in editable mode
-RUN uv pip install --system -e .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -e .
 
-# Default: run all non-synthcity tests
-CMD ["pytest", "-m", "not synthcity", "--ignore-glob=**/test_arf.py", "--ignore-glob=**/test_bayesian_network.py", "--ignore-glob=**/test_great.py", "--ignore-glob=**/test_nflow.py", "--ignore-glob=**/test_smote.py", "tests/", "-v", "--tb=short"]
+# 5. Strip compiled bytecode and third-party test dirs (~100–200 MB)
+RUN find /usr/local/lib/python3.11/site-packages -type d -name "__pycache__" \
+    -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.11/site-packages -type d \
+    \( -name "tests" -o -name "test" \) \
+    \( -not -path "*/stg/*" \) \
+    -exec rm -rf {} + 2>/dev/null || true
+
+
+# ── Stage 2: runtime ───────────────────────────────────────────────────────────
+FROM nvidia/cuda:${CUDA_VERSION}.1-base-ubuntu22.04 AS runtime
+
+WORKDIR /app
+
+# Runtime deps only: Python + libgomp (OpenMP for scikit-learn/torch)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.11 python3-pip \
+    libgomp1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python  python  /usr/bin/python3.11 1 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy only runtime artifacts from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages \
+    /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY --from=builder /app/src          src/
+COPY --from=builder /app/setup.cfg    ./
+COPY --from=builder /app/pyproject.toml ./
+
+COPY config/ config/
+COPY tests/  tests/
+
+# Expose CUDA visibility to PyTorch
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+# Default: run all non-synthcity tests (GPU-enabled)
+CMD ["pytest", \
+    "-m", "not synthcity", \
+    "--ignore-glob=**/test_arf.py", \
+    "--ignore-glob=**/test_bayesian_network.py", \
+    "--ignore-glob=**/test_great.py", \
+    "--ignore-glob=**/test_nflow.py", \
+    "--ignore-glob=**/test_smote.py", \
+    "tests/", "-v", "--tb=short"]
