@@ -41,12 +41,11 @@ Detailed development reference for the table-synthesizers project. For a quick o
    ┌───────────▼────────┐  ┌──────────▼───────────┐
    │  Custom Models      │  │  Synthcity Models    │
    │  CTGAN, TVAE,       │  │  ARF, BayesianNet,   │
-   │  TabDDPM, TabSyn,   │  │  GREAT, NFlow,       │
-   │  AutoDiff, PATECTGAN│  │  TabDiff             │
-   │  CART, DPCART, SMOTE│  │  (plugin wrappers)   │
-   │  AIM, Identity,     │  ├──────────────────────┤
-   │  LTM_VAE, TabPFGen  │  │  SDV Models          │
-   │                     │  │  GaussianCopula      │
+   │  TabDDPM, TabSyn,   │  │  GREAT, NFlow        │
+   │  AutoDiff, PATECTGAN│  │  (plugin wrappers)   │
+   │  CART, DPCART, SMOTE│  │                      │
+   │  AIM, Identity,     │  │                      │
+   │  LTM_VAE            │  │                      │
    └─────────────────────┘  └──────────────────────┘
 ```
 
@@ -104,19 +103,9 @@ src/stg/
 ├── BayesianNetwork/           # Bayesian network (synthcity wrapper)
 ├── ARF/                       # Adversarial Random Forest (synthcity wrapper)
 ├── NFlow/                     # Normalizing flows (synthcity wrapper)
-├── GREAT/                     # Transformer-based (synthcity wrapper)
-│   ├── __init__.py            # Exports GREATSynthesizer
-│   └── great_synthesizer.py   # Synthcity plugin wrapper
-├── GaussianCopula/            # SDV Gaussian Copula
-│   ├── __init__.py
-│   └── gaussian_copula_synthesizer.py
-├── TabDiff/                   # Diffusion-style mixed-type (synthcity)
-│   ├── __init__.py
-│   ├── tabdiff_synthesizer.py
-│   └── tabdiff_ref_utils.py   # Column grouping utilities
-└── TabPFGen/                  # SGLD + TabPFN generator
-    ├── __init__.py
-    └── tabpfgen_synthesizer.py
+└── GREAT/                     # Transformer-based (synthcity wrapper)
+    ├── __init__.py            # Exports GREATSynthesizer
+    └── great_synthesizer.py   # Synthcity plugin wrapper
 ```
 
 ## BaseSynthesizer API Reference
@@ -485,10 +474,7 @@ tests/
 │   ├── test_smote.py                   # SMOTE unit tests
 │   ├── test_tabddpm.py                # TabDDPM unit tests
 │   ├── test_tabsyn.py                 # TabSyn unit tests
-│   ├── test_tvae.py                    # TVAE unit tests
-│   ├── test_gaussian_copula.py        # GaussianCopula unit tests
-│   ├── test_tabdiff.py                # TabDiff unit tests
-│   └── test_tabpfgen.py               # TabPFGen unit tests
+│   └── test_tvae.py                    # TVAE unit tests
 └── integration/
     ├── utils.py                        # Shared test utilities
     ├── dataframe_test_utils.py         # DataFrame comparison helpers
@@ -579,7 +565,7 @@ Core packages for CPU-only models (Identity, CART, DPCART, SMOTE, AIM). No torch
 
 #### `requirements-gpu.txt` (GPU - CUDA SM 12.1 Blackwell)
 
-For GPU-accelerated models (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen).
+For GPU-accelerated models (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE).
 
 | Package | Version | Purpose |
 |---------|---------|---------|
@@ -607,17 +593,11 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 #### `requirements-synthcity.txt` (Synthcity)
 
-For BayesianNetwork, ARF, GREAT, NFlow, TabDiff. Best on Python 3.11 (ts311 conda env).
+For BayesianNetwork, ARF, GREAT, NFlow. Best on Python 3.11 (ts311 conda env).
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| synthcity | >= 0.2.12 | All 5 synthcity plugin models |
-
-#### SDV (GaussianCopula)
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| sdv | >= 1.34.0 | GaussianCopula model |
+| synthcity | >= 0.2.12 | All 4 synthcity plugin models |
 
 **Known issues:** Python 3.12 + ARM64 may lack torchtext wheels.
 
@@ -651,9 +631,8 @@ pip install -r requirements-synthcity.txt
 | Tier | Models |
 |------|--------|
 | **Base** | Identity, CART, DPCART, SMOTE, AIM |
-| **GPU / CPU** | CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen |
-| **Synthcity** | BayesianNetwork, ARF, GREAT, NFlow, TabDiff |
-| **SDV** | GaussianCopula |
+| **GPU / CPU** | CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE |
+| **Synthcity** | BayesianNetwork, ARF, GREAT, NFlow |
 
 ### The libzero Workaround
 
@@ -761,9 +740,6 @@ If you see errors about `zero` module:
 | BayesianNetwork | Y | Y | ** | - | - | Y |
 | GREAT | Y | Y | ** | Y | - | Y |
 | NFlow | Y | Y | ** | Y | - | Y |
-| GaussianCopula | Y | Y | Y | - | - | Y |
-| TabDiff | Y | Y | ** | Y | - | Y |
-| TabPFGen | Y | Y | Y | Y | Y | Y |
 
 `*` TabSyn has subprocess compatibility issues on Python 3.12
 `**` synthcity models may have dependency issues on Python 3.12 + ARM64

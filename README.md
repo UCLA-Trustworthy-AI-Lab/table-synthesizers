@@ -1,10 +1,10 @@
 # Table Synthesizers
 
-A comprehensive Python library for generating synthetic tabular data using 19 state-of-the-art machine learning models. Supports GANs, Variational Autoencoders, Diffusion Models, Transformers, Bayesian Networks, Copula models, and privacy-preserving methods with GPU acceleration.
+A comprehensive Python library for generating synthetic tabular data using 16 state-of-the-art machine learning models. Supports GANs, Variational Autoencoders, Diffusion Models, Transformers, Bayesian Networks, and privacy-preserving methods with GPU acceleration.
 
 ## Features
 
-- **19 Synthesizer Models** with 100% success rate across all models
+- **16 Synthesizer Models** with 100% success rate across all models
 - **Simple DataFrame Interface** - direct pandas DataFrame input with automatic encoding
 - **GPU Acceleration** - CUDA and Apple Silicon (MPS) support with automatic device detection
 - **Privacy-Preserving Options** - differential privacy with AIM, PATECTGAN, and DPCART
@@ -22,10 +22,10 @@ Dependencies are split into four tiers. Install only what you need:
 git clone https://github.com/ohsono/table-synthesizers.git
 cd table-synthesizers
 
-# Base only (Identity, CART, DPCART, SMOTE, AIM, TabDiff - no torch needed)
+# Base only (Identity, CART, DPCART, SMOTE, AIM - no torch needed)
 pip install -r requirements.txt
 
-# Add GPU models (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE, TabPFGen)
+# Add GPU models (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130  # Blackwell SM 12.1
 pip install -r requirements-gpu.txt
 
@@ -33,20 +33,16 @@ pip install -r requirements-gpu.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements-cpu.txt
 
-# Add synthcity models (BayesianNetwork, ARF, GREAT, NFlow, TabDiff)
+# Add synthcity models (BayesianNetwork, ARF, GREAT, NFlow)
 pip install -r requirements-synthcity.txt
-
-# Add SDV models (GaussianCopula)
-pip install sdv>=1.34.0
 ```
 
 | File | Models | Key Packages |
 |------|--------|-------------|
 | `requirements.txt` | Identity, CART, DPCART, SMOTE, AIM | pandas, numpy, sklearn |
-| `requirements-gpu.txt` | CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, TabPFGen | torch (CUDA), transformers |
+| `requirements-gpu.txt` | CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn | torch (CUDA), transformers |
 | `requirements-cpu.txt` | Same as GPU, on CPU | torch (CPU), transformers |
-| `requirements-synthcity.txt` | BayesianNetwork, ARF, GREAT, NFlow, TabDiff | synthcity |
-| `sdv>=1.34.0` | GaussianCopula | sdv |
+| `requirements-synthcity.txt` | BayesianNetwork, ARF, GREAT, NFlow | synthcity |
 
 ### GPU Verification
 
@@ -160,13 +156,6 @@ See [config/README.md](config/README.md) for configuration details.
 | **PATECTGAN** | GAN + DP | GPU | Privacy-aware CTGAN with PATE framework |
 | **TabSyn** | Hybrid | GPU | Advanced tabular synthesis (VAE + Diffusion) |
 | **LTM_VAE** | VAE | GPU | Latent Table Model wrapper |
-| **TabPFGen** | SGLD+TabPFN | GPU | Stochastic Gradient Langevin Dynamics with TabPFN refinement |
-
-### Statistical & Copula Models
-
-| Model | Type | Device | Description |
-|-------|------|--------|-------------|
-| **GaussianCopula** | Copula | CPU | SDV Gaussian Copula with marginal distributions |
 
 ### Synthcity-Based Models
 
@@ -176,7 +165,6 @@ See [config/README.md](config/README.md) for configuration details.
 | **NFlow** | Flow | GPU | Normalizing Flows |
 | **BayesianNetwork** | Probabilistic | CPU | Bayesian network synthesis |
 | **GREAT** | Transformer | GPU | GeneRative fEAture Transformer |
-| **TabDiff** | Diffusion | GPU | Diffusion-style synthesizer for mixed-type tabular data |
 
 All synthcity models accept plugin-specific hyperparameters via the config dict:
 
@@ -227,10 +215,7 @@ table-synthesizers/
 │   ├── BayesianNetwork/           # Bayesian network (synthcity)
 │   ├── ARF/                       # Adversarial Random Forest (synthcity)
 │   ├── NFlow/                     # Normalizing flows (synthcity)
-│   ├── GREAT/                     # Transformer-based (synthcity)
-│   ├── GaussianCopula/            # SDV Gaussian Copula
-│   ├── TabDiff/                   # Diffusion-style mixed-type (synthcity)
-│   └── TabPFGen/                  # SGLD + TabPFN generator
+│   └── GREAT/                     # Transformer-based (synthcity)
 ├── src/data_loader/               # File data loading interface
 ├── config/                        # JSON model configuration files
 │   ├── default_CTGAN.json

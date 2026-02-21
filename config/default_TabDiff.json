@@ -1,9 +1,0 @@
-{
-    "model_type": "gpu",
-    "noise_scale": 0.05,
-    "covariance_regularization": 1e-5,
-    "description": "Diffusion-style synthesizer for mixed-type tabular data",
-    "speedup": "5-10x",
-    "quality": "High",
-    "backend": "synthcity"
-}

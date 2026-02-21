@@ -67,13 +67,13 @@ Complete documentation for the table-synthesizers project. For a quick overview,
 
 ## Quick Reference
 
-### Available Models (19 total)
+### Available Models (16 total)
 
 **GPU-Accelerated (10-50x speedup)**:
-CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, GREAT, NFlow, TabSyn, LTM_VAE, TabPFGen, TabDiff
+CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, GREAT, NFlow, TabSyn, LTM_VAE
 
 **CPU-Only**:
-Identity, CART, DPCART, SMOTE, AIM, BayesianNetwork, ARF, GaussianCopula
+Identity, CART, DPCART, SMOTE, AIM, BayesianNetwork, ARF
 
 ### Installation (4-Tier Requirements)
 
@@ -81,7 +81,7 @@ Identity, CART, DPCART, SMOTE, AIM, BayesianNetwork, ARF, GaussianCopula
 # Base only (Identity, CART, DPCART, SMOTE, AIM - no torch needed)
 pip install -r requirements.txt
 
-# GPU models on Blackwell (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, TabPFGen)
+# GPU models on Blackwell (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn)
 pip install -r requirements.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 pip install -r requirements-gpu.txt
@@ -91,11 +91,8 @@ pip install -r requirements.txt
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements-cpu.txt
 
-# Synthcity models (BayesianNetwork, ARF, GREAT, NFlow, TabDiff - best on Python 3.11)
+# Synthcity models (BayesianNetwork, ARF, GREAT, NFlow - best on Python 3.11)
 pip install -r requirements-synthcity.txt
-
-# SDV models (GaussianCopula)
-pip install sdv>=1.34.0
 ```
 
 | File | Provides | Key Packages |
@@ -104,7 +101,6 @@ pip install sdv>=1.34.0
 | `requirements-gpu.txt` | GPU models (CUDA SM 12.1) | torch>=2.7, torchvision, transformers |
 | `requirements-cpu.txt` | GPU models on CPU | torch>=2.7 (CPU wheel), transformers |
 | `requirements-synthcity.txt` | Synthcity models | synthcity>=0.2.12 |
-| `sdv>=1.34.0` | GaussianCopula | sdv |
 
 ### Model Name Aliases
 
@@ -160,33 +156,6 @@ synth = TableSynthesizer('NFlow', config={
     'n_units_hidden': 200,  # Units per layer (default: 100)
     'lr': 0.0005,           # Learning rate (default: 0.001)
     'batch_size': 128,      # Batch size (default: 200)
-})
-```
-
-### New Model Hyperparameters
-
-```python
-# GaussianCopula - SDV statistical copula model
-synth = TableSynthesizer('GaussianCopula', config={
-    'enforce_min_max_values': True,   # Enforce training data min/max
-    'enforce_rounding': True,         # Apply rounding to numerics
-    'default_distribution': 'beta',   # Default marginal distribution
-})
-
-# TabDiff - Diffusion-style statistical synthesizer (synthcity backend)
-synth = TableSynthesizer('TabDiff', config={
-    'noise_scale': 0.05,              # Gaussian noise added to samples
-    'covariance_regularization': 1e-5, # Ridge regularization for covariance
-    'random_state': 42,               # Reproducibility seed
-})
-
-# TabPFGen - SGLD with optional TabPFN refinement
-synth = TableSynthesizer('TabPFGen', config={
-    'n_sgld_steps': 25,               # Langevin dynamics iterations
-    'sgld_step_size': 0.01,           # SGLD step size
-    'sgld_noise_scale': 0.01,         # Noise in Langevin dynamics
-    'use_tabpfn_refinement': True,    # Use TabPFN for target prediction
-    'classification_max_unique': 20,  # Threshold for classification vs regression
 })
 ```
 

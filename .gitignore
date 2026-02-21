@@ -12,11 +12,13 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+<<<<<<< Updated upstream
 # vscode
 .vscode/
-
+=======
 # wandb
 wandb/
+>>>>>>> Stashed changes
 
 # Input preprocessed datasets
 datasets/
@@ -40,14 +42,19 @@ presentation/*
 
 core
 
+<<<<<<< Updated upstream
+# Config
+config/
+
 # Data
 data/
 
 # example
 example/
-
+=======
 # Patch 
 patches/
+>>>>>>> Stashed changes
 
 # AGENTS.md
 AGENTS.md
@@ -58,11 +65,6 @@ AGENTS.md
 !docs/*.md
 !config/README.md
 *.txt
-!requirements.txt 
-!requirements-cpu.txt
-!requirements-gpu.txt
-!requirements-optional.txt
-!requirements-synthcity.txt
 
 # image
 *.png
