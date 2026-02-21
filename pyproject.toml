@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 # Test configuration for the new tests/ directory structure
 testpaths = ["tests"]
-python_files = ["test_*.py", "!test_models_comprehensive.py", "!test_problem_models.py"]
+python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-# Explicitly ignore standalone test scripts
+# Standalone scripts that have test_ functions but aren't pytest suites
+addopts = "--ignore=tests/integration/test_models_comprehensive.py --ignore=tests/integration/test_problem_models.py"
 norecursedirs = [".*", "build", "dist", "*.egg"]
 markers = [
     "gpu: tests requiring PyTorch with CUDA/MPS support",
