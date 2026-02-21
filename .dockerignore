@@ -1,30 +1,60 @@
-# Exclude version control
-.git
-.gitignore
-.github
-
-# Exclude large data and model files
-data/
-*.pth
-*.pt
-downloads/
-wandb/
-workspace/
-
-# Exclude python cache and envs
+# Keep build context minimal for fast Docker builds
+# ─── Python artifacts ──────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# ─── Test outputs / coverage ──────────────────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
-dist/
-build/
-*.egg-info/
-.env
-.venv
+coverage.xml
+*.cover
+
+# ─── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
 env/
+ENV/
+
+# ─── Notebooks (not needed in image) ─────────────────────────────────────────
+*.ipynb
+.ipynb_checkpoints/
+
+# ─── Docs and markdown ────────────────────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ─── Data / model outputs ────────────────────────────────────────────────────
+data/
+datasets/
+dataset/
+outputs/
+*.csv
+*.parquet
+*.pt
+*.pth
+
+# ─── Git / IDE ────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.github/
 .vscode/
 .idea/
 
-# Exclude logs
-*.log
+# ─── Local config / secrets ──────────────────────────────────────────────────
+.env
+.env.*
+*.local
+wandb/
+
+# ─── Docker itself (don't re-include docker files in context layers) ──────────
+docker/
