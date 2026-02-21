@@ -62,6 +62,25 @@ Each model has a configuration file named `default_{MODEL_NAME}.json` with the f
 - **Adaptive and Iterative Mechanism**
 - No specific hyperparameters (uses sklearn defaults)
 
+## Statistical & Copula Models
+
+### default_GaussianCopula.json
+- **Gaussian Copula** - SDV-based statistical copula model for marginal distributions
+- Backend: SDV (Synthetic Data Vault)
+- Requires: `sdv>=1.34.0`
+- Hyperparameters: enforce_min_max_values, enforce_rounding, default_distribution, numerical_distributions, locales
+
+### default_TabDiff.json
+- **TabDiff** - Diffusion-style synthesizer for mixed-type tabular data
+- Backend: synthcity-based, GPU recommended
+- Hyperparameters: noise_scale, covariance_regularization, random_state, target_column
+
+### default_TabPFGen.json
+- **TabPFGen** - SGLD-based generator with optional TabPFN refinement
+- Supports GPU acceleration for SGLD computations
+- Optional dependency: `tabpfn` (falls back to nearest-neighbor if unavailable)
+- Hyperparameters: n_sgld_steps, sgld_step_size, sgld_noise_scale, feature_noise_init, classification_max_unique, use_tabpfn_refinement
+
 ## Synthcity-Based Models
 
 These models use the [synthcity](https://github.com/vanderschaarlab/synthcity) plugin system as their backend.

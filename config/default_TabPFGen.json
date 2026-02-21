@@ -1,0 +1,12 @@
+{
+    "model_type": "gpu",
+    "n_sgld_steps": 25,
+    "sgld_step_size": 0.01,
+    "sgld_noise_scale": 0.01,
+    "feature_noise_init": 0.01,
+    "classification_max_unique": 20,
+    "use_tabpfn_refinement": true,
+    "description": "SGLD-based synthesizer with optional TabPFN refinement",
+    "speedup": "5-10x",
+    "quality": "High"
+}
