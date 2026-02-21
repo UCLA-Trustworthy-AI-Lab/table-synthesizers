@@ -10,3 +10,8 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 # Explicitly ignore standalone test scripts
 norecursedirs = [".*", "build", "dist", "*.egg"]
+markers = [
+    "gpu: tests that require any GPU (CUDA or MPS)",
+    "cuda: tests that specifically require NVIDIA CUDA",
+    "slow: tests that take significant time to run",
+]
