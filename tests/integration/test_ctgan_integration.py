@@ -10,6 +10,26 @@ from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
 from utils import run_sandbox_dataset_test
 
+# ---------------------------------------------------------------------------
+# Skip sandbox tests if no external dataset directory is available.
+# Set DATASET_PATH env var or place CSVs in tests/integration/test_data/sandbox_datasets/
+# ---------------------------------------------------------------------------
+_SANDBOX_DIR = os.environ.get(
+    'DATASET_PATH',
+    os.path.join(os.path.dirname(__file__), 'test_data', 'sandbox_datasets')
+)
+_HAS_SANDBOX = os.path.isdir(_SANDBOX_DIR) and bool(
+    [f for f in os.listdir(_SANDBOX_DIR) if f.endswith('.csv')] if os.path.isdir(_SANDBOX_DIR) else []
+)
+
+skip_if_no_sandbox = pytest.mark.skipif(
+    not _HAS_SANDBOX,
+    reason=(
+        f"Sandbox datasets not found at '{_SANDBOX_DIR}'. "
+        "Set DATASET_PATH env var or add CSVs to tests/integration/test_data/sandbox_datasets/"
+    ),
+)
+
 @pytest.fixture
 def data():
     return load_and_process_data()
@@ -41,18 +61,21 @@ def test_CTGAN_dataframe_support(data):
     test_dataframe_support('CTGAN', config, n_samples=10)
 
 
+@skip_if_no_sandbox
 def test_PATECTGAN_sandbox_insurance():
-    """Test PATECTGAN on insurance dataset (CTGAN not available, using PATECTGAN instead)"""
+    """Test PATECTGAN on insurance dataset (skipped if sandbox data unavailable)"""
     run_sandbox_dataset_test('PATECTGAN', 'insurance', n_samples=50, sample_ratio=0.1)
 
 
+@skip_if_no_sandbox
 def test_PATECTGAN_sandbox_titanic():
-    """Test PATECTGAN on Titanic dataset (CTGAN not available, using PATECTGAN instead)"""
+    """Test PATECTGAN on Titanic dataset (skipped if sandbox data unavailable)"""
     run_sandbox_dataset_test('PATECTGAN', 'Titanic', n_samples=50, sample_ratio=0.2)
 
 
+@skip_if_no_sandbox
 def test_PATECTGAN_sandbox_bean():
-    """Test PATECTGAN on Bean dataset (CTGAN not available, using PATECTGAN instead)"""
+    """Test PATECTGAN on Bean dataset (skipped if sandbox data unavailable)"""
     run_sandbox_dataset_test('PATECTGAN', 'Bean', n_samples=50, sample_ratio=0.05)
 
 if __name__ == "__main__":
