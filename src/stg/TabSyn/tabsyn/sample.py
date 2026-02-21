@@ -26,7 +26,7 @@ def main(args):
     
     model = Model(denoise_fn = denoise_fn, hid_dim = train_z.shape[1]).to(device)
 
-    model.load_state_dict(torch.load(f'{ckpt_path}/model.pt'))
+    model.load_state_dict(torch.load(f'{ckpt_path}/model.pt', weights_only=False))
 
     '''
         Generating samples    

@@ -346,7 +346,7 @@ class CTGAN(BaseSynthesizer):
         
   def load_state(self, checkpoint):
       """Load state from checkpoint"""
-      state = torch.load(checkpoint)
+      state = torch.load(checkpoint, weights_only=False)
 
       if not hasattr(self, '_device'):
           self.set_device()

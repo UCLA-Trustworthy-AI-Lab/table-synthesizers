@@ -127,7 +127,7 @@ if __name__ == '__main__':
         model = Model_VAE(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor, bias = True)
         model = model.to(device)
 
-        model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
+        model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt', weights_only=False))
 
         pre_encoder = Encoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor).to(device)
         pre_decoder = Decoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor)
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
         model = Model(denoise_fn = denoise_fn, hid_dim = train_z.shape[1]).to(device)
 
-        model.load_state_dict(torch.load(f'data/TabSyn/ckpt/{dataname}/model.pt'))
+        model.load_state_dict(torch.load(f'data/TabSyn/ckpt/{dataname}/model.pt', weights_only=False))
 
         # Define the masking area
 

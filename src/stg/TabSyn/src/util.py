@@ -218,6 +218,7 @@ def dump_metrics(metrics: Dict[str, Any], path: Path) -> None:
 
 
 def load_checkpoint(path: Path, *args, **kwargs) -> Dict[str, np.ndarray]:
+    kwargs.setdefault('weights_only', False)
     return torch.load(
         _get_output_item_path(path, 'checkpoint.pt', True), *args, **kwargs
     )

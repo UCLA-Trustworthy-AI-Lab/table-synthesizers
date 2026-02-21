@@ -244,7 +244,7 @@ class AIM(Mechanism, BaseSynthesizer):
         return state
 
     def load_state(self, checkpoint):
-        state = torch.load(checkpoint)
+        state = torch.load(checkpoint, weights_only=False)
         self.model = state['model']
         self.model_loaded = True
 

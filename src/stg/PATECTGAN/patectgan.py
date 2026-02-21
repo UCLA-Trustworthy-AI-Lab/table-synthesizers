@@ -606,7 +606,7 @@ class PATECTGAN(BaseSynthesizer):
         return state
           
     def load_state(self, checkpoint):
-        state = torch.load(checkpoint)
+        state = torch.load(checkpoint, weights_only=False)
         
         self._transformer = state['transformer']
         data_dim = self._transformer.output_width
