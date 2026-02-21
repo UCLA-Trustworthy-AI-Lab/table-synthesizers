@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.TabDDPM.tabddpm import TabDDPM
 
+pytestmark = pytest.mark.gpu
+
 def test_tabddpm_initialization():
     model = TabDDPM(steps=1)
     assert model.steps == 1

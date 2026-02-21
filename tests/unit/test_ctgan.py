@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.CTGAN.ctgan import CTGAN
 
+pytestmark = pytest.mark.gpu
+
 def test_ctgan_initialization():
     """Test that CTGAN can be initialized."""
     model = CTGAN(epochs=1)

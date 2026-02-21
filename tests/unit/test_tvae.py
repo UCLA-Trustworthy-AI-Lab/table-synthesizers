@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.TVAE.TVAE import TVAE
 
+pytestmark = pytest.mark.gpu
+
 def test_tvae_initialization():
     model = TVAE(epochs=1)
     assert model._epochs == 1

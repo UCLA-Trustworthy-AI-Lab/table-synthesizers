@@ -1,10 +1,14 @@
 import pandas as pd
 import pytest
 
-from stg.GaussianCopula.gaussian_copula_synthesizer import (
-    SDV_AVAILABLE,
-    GaussianCopulaSynthesizer,
-)
+try:
+    from stg.GaussianCopula.gaussian_copula_synthesizer import (
+        SDV_AVAILABLE,
+        GaussianCopulaSynthesizer,
+    )
+except ImportError:
+    SDV_AVAILABLE = False
+    GaussianCopulaSynthesizer = None
 
 
 @pytest.mark.skipif(not SDV_AVAILABLE, reason="sdv not installed")

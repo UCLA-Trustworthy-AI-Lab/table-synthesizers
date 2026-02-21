@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.GREAT.great_synthesizer import GREATSynthesizer, SYNTHCITY_AVAILABLE
 
+pytestmark = pytest.mark.synthcity
+
 @pytest.mark.skipif(not SYNTHCITY_AVAILABLE, reason="synthcity not installed")
 def test_great_initialization():
     model = GREATSynthesizer()

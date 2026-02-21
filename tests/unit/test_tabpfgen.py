@@ -1,7 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from stg.TabPFGen.tabpfgen_synthesizer import TabPFGenSynthesizer
+
+pytestmark = pytest.mark.gpu
 
 
 def test_tabpfgen_initialization():

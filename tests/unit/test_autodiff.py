@@ -6,6 +6,8 @@ import shutil
 import os
 from stg.AutoDiff.autodiff_synthesizer import AutoDiffSynthesizer, AUTODIFF_AVAILABLE
 
+pytestmark = pytest.mark.gpu
+
 @pytest.mark.skipif(not AUTODIFF_AVAILABLE, reason="AutoDiff dependencies not installed")
 def test_autodiff_initialization():
     """Test that AutoDiff can be initialized."""

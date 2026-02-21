@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import torch
 
+pytestmark = pytest.mark.gpu
+
 # Try to import LTM_VAE, handle case where it doesn't exist
 try:
     from stg.LTM_VAE import LTMVAESynthesizer, LTM_VAE_AVAILABLE

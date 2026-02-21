@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.TabSyn.tabsyn_synthesizer import TabSynSynthesizer, TABSYN_AVAILABLE
 
+pytestmark = pytest.mark.gpu
+
 @pytest.mark.skipif(not TABSYN_AVAILABLE, reason="TabSyn dependencies not installed")
 def test_tabsyn_initialization():
     model = TabSynSynthesizer(epochs=1)

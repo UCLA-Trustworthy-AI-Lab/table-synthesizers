@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.BayesianNetwork.bayesian_network_synthesizer import BayesianNetworkSynthesizer, SYNTHCITY_AVAILABLE
 
+pytestmark = pytest.mark.synthcity
+
 @pytest.mark.skipif(not SYNTHCITY_AVAILABLE, reason="synthcity not installed")
 def test_bn_initialization():
     """Test that BayesianNetwork can be initialized."""

@@ -6,6 +6,8 @@ import shutil
 import os
 from stg.ARF.arf_synthesizer import ARFSynthesizer, SYNTHCITY_AVAILABLE
 
+pytestmark = pytest.mark.synthcity
+
 @pytest.mark.skipif(not SYNTHCITY_AVAILABLE, reason="synthcity not installed")
 def test_arf_initialization():
     """Test that ARF can be initialized."""

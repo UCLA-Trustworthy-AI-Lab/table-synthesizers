@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.NFlow.nflow_synthesizer import NFlowSynthesizer, SYNTHCITY_AVAILABLE
 
+pytestmark = pytest.mark.synthcity
+
 @pytest.mark.skipif(not SYNTHCITY_AVAILABLE, reason="synthcity not installed")
 def test_nflow_initialization():
     model = NFlowSynthesizer()

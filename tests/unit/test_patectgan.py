@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from stg.PATECTGAN.patectgan import PATECTGAN
 
+pytestmark = pytest.mark.gpu
+
 def test_patectgan_initialization():
     model = PATECTGAN(epochs=1)
     assert model._epochs == 1

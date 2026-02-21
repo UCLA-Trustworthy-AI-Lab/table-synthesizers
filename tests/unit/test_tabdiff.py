@@ -1,7 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from stg.TabDiff.tabdiff_synthesizer import TabDiffSynthesizer
+
+pytestmark = pytest.mark.gpu
 
 
 def test_tabdiff_initialization():
