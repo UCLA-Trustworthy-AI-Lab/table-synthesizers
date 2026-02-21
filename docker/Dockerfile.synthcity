@@ -1,42 +1,91 @@
-# Tier 3 - Synthcity models
-# Models: BayesianNetwork, ARF, GREAT, NFlow, GaussianCopula
-# Python 3.11 only (synthcity dependency compatibility)
-# CPU torch (synthcity models mostly CPU, except GREAT/NFlow)
+# ─── Optimized Synthcity Image ─────────────────────────────────────────────────
+# Tier 3: Synthcity models (BayesianNetwork, ARF, GREAT, NFlow)
+# Python 3.11 only — synthcity has strict compatibility constraints
+# CPU-only torch (synthcity models are mostly CPU; GREAT/NFlow are marginal)
+#
+# Key optimizations:
+#  1. Multi-stage build — build tools not in runtime layer
+#  2. CPU-only torch pre-installed before synthcity to prevent GPU wheel bloat
+#  3. uv cache mounts — zero pip/uv cache in final image layers
+#  4. Strip __pycache__/.pyc/third-party test dirs from site-packages
+# ───────────────────────────────────────────────────────────────────────────────
 
-FROM python:3.11-slim
+# ── Stage 1: builder ───────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# System dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
+    apt-get install -y --no-install-recommends \
+    git build-essential \
+    && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install base requirements
 COPY requirements.txt requirements-synthcity.txt ./
-RUN uv pip install --system -r requirements.txt
 
-# Install CPU-only PyTorch
+# 1. Install CPU-only torch first, so synthcity/ctgan don't pull GPU wheel
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-RUN uv pip install --system torch --index-url ${TORCH_INDEX_URL}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system \
+    torch torchvision \
+    --index-url ${TORCH_INDEX_URL}
 
-# Install synthcity requirements (uses custom fork for compatibility)
-RUN uv pip install --system -r requirements-synthcity.txt
+# 2. Base requirements (pandas, scikit-learn, sdv, etc.)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
 
-# Install dev/test dependencies
-RUN uv pip install --system pytest
+# 3. Synthcity (heavy — pulls opacus, pgmpy, torchtext as transitive deps)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements-synthcity.txt
 
-# Copy project source
+# 4. Test runner
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system pytest
+
+# 5. Install package in editable mode
 COPY src/ src/
-COPY config/ config/
-COPY tests/ tests/
 COPY setup.cfg pyproject.toml ./
 
-# Install package in editable mode
-RUN uv pip install --system -e .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -e .
+
+# 6. Strip __pycache__, .pyc, and third-party test dirs
+RUN find /usr/local/lib/python3.11/site-packages -type d -name "__pycache__" \
+    -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.11/site-packages -type d \
+    \( -name "tests" -o -name "test" \) \
+    \( -not -path "*/stg/*" \) \
+    -exec rm -rf {} + 2>/dev/null || true
+
+
+# ── Stage 2: runtime ───────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Runtime system deps: libgomp (OpenMP for scikit-learn / torch CPU)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgomp1 git \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy only built artifacts from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages \
+    /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY --from=builder /app/src          src/
+COPY --from=builder /app/setup.cfg    ./
+COPY --from=builder /app/pyproject.toml ./
+
+COPY config/ config/
+COPY tests/  tests/
 
 # Default: run synthcity-marked tests
 CMD ["pytest", "-m", "synthcity", "tests/", "-v", "--tb=short"]
