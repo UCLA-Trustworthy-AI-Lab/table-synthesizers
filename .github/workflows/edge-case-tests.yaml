@@ -1,0 +1,38 @@
+name: "▶ Edge Case Tests"
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_filter:
+        description: 'Run edge cases for a specific model only (e.g. CTGAN). Leave empty for all.'
+        type: string
+        default: ''
+
+concurrency:
+  group: edge-case-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  edge-case-tests:
+    name: Edge Case Tests${{ inputs.model_filter != '' && format(' [{0}]', inputs.model_filter) || '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements*.txt"
+      - name: Install dependencies
+        run: |
+          uv pip install --system -r requirements.txt
+          uv pip install --system pytest
+          uv pip install --system -e .
+      - name: Run edge cases (filtered)
+        if: inputs.model_filter != ''
+        run: pytest tests/integration/test_edge_cases.py -k "${{ inputs.model_filter }}" -v --tb=short
+      - name: Run all edge cases
+        if: inputs.model_filter == ''
+        run: pytest tests/integration/test_edge_cases.py -v --tb=short

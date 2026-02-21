@@ -1,11 +1,13 @@
 name: CI/CD Pipeline
 
 # ═══════════════════════════════════════════════════════════
-# TRIGGER STRATEGY:
-#
-# push (branch)   → incremental: only test changed models
-# pull_request    → full suite: docker build + unit + integration + edge cases
-# workflow_dispatch → manual menu: pick exactly which steps to run
+# AUTO TRIGGERS ONLY – push and pull_request
+# For manual individual stage runs, use the dedicated workflows:
+#   → Actions > "Unit Tests"
+#   → Actions > "Integration Tests"
+#   → Actions > "Edge Case Tests"
+#   → Actions > "Docker Build"
+#   → Actions > "GPU Tests"
 # ═══════════════════════════════════════════════════════════
 
 on:
@@ -13,37 +15,15 @@ on:
     branches: [ main, master, '*_test' ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:
-    inputs:
-      run_unit:
-        description: '✅ Unit tests (changed models only)'
-        type: boolean
-        default: true
-      run_integration:
-        description: '🔗 Integration tests'
-        type: boolean
-        default: false
-      run_edge_cases:
-        description: '🧩 Full edge-case tests'
-        type: boolean
-        default: false
-      build_docker:
-        description: '🐳 Rebuild Docker images'
-        type: boolean
-        default: false
-      run_all:
-        description: '🚀 Full rebuild + full test suite (overrides above)'
-        type: boolean
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# ─────────────────────────────────────────────────────────────
-# JOB 1: Detect which models/files changed (runs on every trigger)
-# ─────────────────────────────────────────────────────────────
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 1. Detect which models/files changed
+  # ─────────────────────────────────────────────────────────────
   detect-changes:
     name: Detect Changes
     runs-on: ubuntu-latest
@@ -59,7 +39,6 @@ jobs:
       - name: Detect changed models and Docker files
         id: detect
         run: |
-          # Get changed files vs. base ref
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             BASE_REF="${{ github.event.pull_request.base.sha }}"
           else
@@ -70,66 +49,52 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
 
-          # Extract unique model names from src/stg/<ModelName>/
           MODELS=$(echo "$CHANGED" | grep '^src/stg/' | cut -d'/' -f3 | sort -u | tr '\n' ',' | sed 's/,$//')
           HAS_MODELS=$([ -n "$MODELS" ] && echo "true" || echo "false")
 
-          # Detect docker/requirements file changes
           DOCKER_CHANGED=$(echo "$CHANGED" | grep -E '^(docker/Dockerfile|requirements)' | wc -l)
           HAS_DOCKER=$([ "$DOCKER_CHANGED" -gt "0" ] && echo "true" || echo "false")
 
           echo "models_changed=$MODELS" >> $GITHUB_OUTPUT
           echo "has_model_changes=$HAS_MODELS" >> $GITHUB_OUTPUT
           echo "docker_changed=$HAS_DOCKER" >> $GITHUB_OUTPUT
+          echo "Models changed: $MODELS | Docker changed: $HAS_DOCKER"
 
-          echo "Models changed: $MODELS"
-          echo "Docker files changed: $HAS_DOCKER"
-
-# ─────────────────────────────────────────────────────────────
-# JOB 2: Unit tests – changed models only (push) or all (PR/dispatch)
-# ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # 2. Unit tests
+  #    push   → changed models only
+  #    PR     → full suite
+  # ─────────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests
     needs: detect-changes
     runs-on: ubuntu-latest
-    # Run on: PR, dispatch with run_unit/run_all, or push with model changes
     if: |
       github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.run_unit == true || inputs.run_all == true)) ||
       (github.event_name == 'push' && needs.detect-changes.outputs.has_model_changes == 'true')
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12']
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
 
-      - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system pytest
-
-      - name: Install package
-        run: uv pip install --system -e .
-
-      - name: Run targeted unit tests (push – changed models only)
+      - name: Run targeted unit tests (push)
         if: github.event_name == 'push'
         run: python tests/run_changed_models.py origin/main
 
-      - name: Run full unit tests (PR or dispatch)
-        if: github.event_name != 'push'
+      - name: Run full unit tests (PR)
+        if: github.event_name == 'pull_request'
         run: |
           pytest tests/unit/ \
             --ignore-glob="**/test_arf.py" \
@@ -139,89 +104,60 @@ jobs:
             --ignore-glob="**/test_smote.py" \
             -v --tb=short
 
-# ─────────────────────────────────────────────────────────────
-# JOB 3: Integration tests (PR and dispatch only)
-# ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # 3. Integration tests (PR only)
+  # ─────────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests
-    needs: [detect-changes, unit-tests]
+    needs: unit-tests
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.run_integration == true || inputs.run_all == true))
-
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
-
-      - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system pytest
-
-      - name: Install package
-        run: uv pip install --system -e .
-
-      - name: Run integration tests
-        run: |
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
+      - run: |
           pytest tests/integration/ \
             --ignore-glob="**/test_edge_cases.py" \
             -v --tb=short
 
-# ─────────────────────────────────────────────────────────────
-# JOB 4: Full edge-case tests (PR and explicit dispatch only)
-# ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # 4. Edge case tests (PR only)
+  # ─────────────────────────────────────────────────────────────
   edge-case-tests:
     name: Edge Case Tests
-    needs: [detect-changes, unit-tests, integration-tests]
+    needs: integration-tests
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.run_edge_cases == true || inputs.run_all == true))
-
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
+      - run: pytest tests/integration/test_edge_cases.py -v --tb=short
 
-      - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system pytest
-
-      - name: Install package
-        run: uv pip install --system -e .
-
-      - name: Run full edge-case tests
-        run: |
-          pytest tests/integration/test_edge_cases.py \
-            -v --tb=short
-
-# ─────────────────────────────────────────────────────────────
-# JOB 5: Docker build (PR, or push when docker files changed, or dispatch)
-# ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # 5. Docker build
+  #    push   → only if Dockerfile/requirements changed
+  #    PR     → always, and runs tests inside container
+  # ─────────────────────────────────────────────────────────────
   docker-build:
     name: Docker Build (${{ matrix.tier }})
     needs: detect-changes
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.build_docker == true || inputs.run_all == true)) ||
       (github.event_name == 'push' && needs.detect-changes.outputs.docker_changed == 'true')
     strategy:
       fail-fast: false
@@ -233,15 +169,10 @@ jobs:
           - tier: synthcity
             dockerfile: docker/Dockerfile.synthcity
             image: table-synthesizers-synthcity
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image (${{ matrix.tier }})
-        uses: docker/build-push-action@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -250,46 +181,34 @@ jobs:
           tags: ${{ matrix.image }}:ci
           cache-from: type=gha,scope=${{ matrix.tier }}
           cache-to: type=gha,mode=max,scope=${{ matrix.tier }}
-
-      - name: Run tests inside Docker (${{ matrix.tier }})
-        if: github.event_name == 'pull_request' || inputs.run_all == true
+      - name: Run tests inside Docker (PR only)
+        if: github.event_name == 'pull_request'
         run: docker run --rm ${{ matrix.image }}:ci
 
-# ─────────────────────────────────────────────────────────────
-# JOB 6: GPU model tests – dispatch or PR only (CPU fallback)
-# ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # 6. GPU tests (PR only, CPU fallback)
+  # ─────────────────────────────────────────────────────────────
   gpu-tests:
-    name: GPU Model Tests (CPU Fallback)
-    needs: [detect-changes, unit-tests]
+    name: GPU Tests (CPU Fallback)
+    needs: unit-tests
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_all == true)
-
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
-
-      - name: Install dependencies
-        run: |
+      - run: |
           uv pip install --system -r requirements.txt
           uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cpu
           uv pip install --system -r requirements-gpu.txt
           uv pip install --system pytest
-
-      - name: Install package
-        run: uv pip install --system -e .
-
-      - name: Run GPU model tests (CPU fallback)
-        run: |
+          uv pip install --system -e .
+      - run: |
           pytest tests/ -m "not synthcity" \
             --ignore-glob="**/test_arf.py" \
             --ignore-glob="**/test_bayesian_network.py" \
