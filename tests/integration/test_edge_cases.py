@@ -56,7 +56,7 @@ TORCH_MODELS = [
 
 # Optional models gated by availability flags
 OPTIONAL_MODELS = [
-    m for m in ["GaussianCopula", "SMOTE"]
+    m for m in ["GaussianCopula"]
     if m in DEFAULT_MODELS
 ]
 
