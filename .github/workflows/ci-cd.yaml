@@ -1,0 +1,218 @@
+name: CI/CD Pipeline
+
+# ═══════════════════════════════════════════════════════════
+# AUTO TRIGGERS ONLY – push and pull_request
+# For manual individual stage runs, use the dedicated workflows:
+#   → Actions > "Unit Tests"
+#   → Actions > "Integration Tests"
+#   → Actions > "Edge Case Tests"
+#   → Actions > "Docker Build"
+#   → Actions > "GPU Tests"
+# ═══════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [ main, master, '*_test' ]
+  pull_request:
+    branches: [ main, master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 1. Detect which models/files changed
+  # ─────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      models_changed: ${{ steps.detect.outputs.models_changed }}
+      docker_changed: ${{ steps.detect.outputs.docker_changed }}
+      has_model_changes: ${{ steps.detect.outputs.has_model_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed models and Docker files
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_REF="${{ github.event.before }}"
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE_REF" HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          MODELS=$(echo "$CHANGED" | grep '^src/stg/' | cut -d'/' -f3 | sort -u | tr '\n' ',' | sed 's/,$//')
+          HAS_MODELS=$([ -n "$MODELS" ] && echo "true" || echo "false")
+
+          DOCKER_CHANGED=$(echo "$CHANGED" | grep -E '^(docker/Dockerfile|requirements)' | wc -l)
+          HAS_DOCKER=$([ "$DOCKER_CHANGED" -gt "0" ] && echo "true" || echo "false")
+
+          echo "models_changed=$MODELS" >> $GITHUB_OUTPUT
+          echo "has_model_changes=$HAS_MODELS" >> $GITHUB_OUTPUT
+          echo "docker_changed=$HAS_DOCKER" >> $GITHUB_OUTPUT
+          echo "Models changed: $MODELS | Docker changed: $HAS_DOCKER"
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. Unit tests
+  #    push   → changed models only
+  #    PR     → full suite
+  # ─────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && needs.detect-changes.outputs.has_model_changes == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements*.txt"
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
+
+      - name: Run targeted unit tests (push)
+        if: github.event_name == 'push'
+        run: python tests/run_changed_models.py origin/main
+
+      - name: Run full unit tests (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          pytest tests/unit/ \
+            --ignore-glob="**/test_arf.py" \
+            --ignore-glob="**/test_bayesian_network.py" \
+            --ignore-glob="**/test_great.py" \
+            --ignore-glob="**/test_nflow.py" \
+            --ignore-glob="**/test_smote.py" \
+            -v --tb=short
+
+  # ─────────────────────────────────────────────────────────────
+  # 3. Integration tests (PR only)
+  # ─────────────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements*.txt"
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
+      - run: |
+          pytest tests/integration/ \
+            --ignore-glob="**/test_edge_cases.py" \
+            -v --tb=short
+
+  # ─────────────────────────────────────────────────────────────
+  # 4. Edge case tests (PR only)
+  # ─────────────────────────────────────────────────────────────
+  edge-case-tests:
+    name: Edge Case Tests
+    needs: integration-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements*.txt"
+      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
+      - run: pytest tests/integration/test_edge_cases.py -v --tb=short
+
+  # ─────────────────────────────────────────────────────────────
+  # 5. Docker build
+  #    push   → only if Dockerfile/requirements changed
+  #    PR     → always, and runs tests inside container
+  # ─────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build (${{ matrix.tier }})
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && needs.detect-changes.outputs.docker_changed == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tier: base
+            dockerfile: docker/Dockerfile.base
+            image: table-synthesizers-base
+          - tier: synthcity
+            dockerfile: docker/Dockerfile.synthcity
+            image: table-synthesizers-synthcity
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.tier }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tier }}
+      - name: Run tests inside Docker (PR only)
+        if: github.event_name == 'pull_request'
+        run: docker run --rm ${{ matrix.image }}:ci
+
+  # ─────────────────────────────────────────────────────────────
+  # 6. GPU tests (PR only, CPU fallback)
+  # ─────────────────────────────────────────────────────────────
+  gpu-tests:
+    name: GPU Tests (CPU Fallback)
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "requirements*.txt"
+      - run: |
+          uv pip install --system -r requirements.txt
+          uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --system -r requirements-gpu.txt
+          uv pip install --system pytest
+          uv pip install --system -e .
+      - run: |
+          pytest tests/ -m "not synthcity" \
+            --ignore-glob="**/test_arf.py" \
+            --ignore-glob="**/test_bayesian_network.py" \
+            --ignore-glob="**/test_great.py" \
+            --ignore-glob="**/test_nflow.py" \
+            --ignore-glob="**/test_smote.py" \
+            -v --tb=short
