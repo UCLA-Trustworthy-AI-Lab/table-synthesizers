@@ -1,0 +1,25 @@
+name: PR Slack Notification
+
+on:
+  pull_request:
+    types: [opened, closed, reopened, synchronize]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Message
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          ACTION="${{ github.event.action }}"
+          if [ "$ACTION" == "closed" ] && [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+            ACTION="merged"
+          elif [ "$ACTION" == "synchronize" ]; then
+            ACTION="updated with new commits"
+          fi
+          
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"🚀 *PR ${ACTION}* in \\`${{ github.repository }}\\`\n*Title:* ${{ github.event.pull_request.title }}\n*Author:* ${{ github.event.pull_request.user.login }}\n*Link:* ${{ github.event.pull_request.html_url }}\"}" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}

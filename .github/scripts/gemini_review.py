@@ -14,15 +14,21 @@ def get_pr_diff(repo, pr_number):
     pr = repo.get_pull(pr_number)
     files = pr.get_files()
 
+    # Exclude files that don't need AI code review to save context tokens
+    EXCLUDE_EXT = ('.lock', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.min.js', '.min.css', '.map')
+    EXCLUDE_FILES = ('package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 'Pipfile.lock')
+
     diff_content = []
     for file in files:
-        diff_content.append(f"\n{'='*80}")
-        diff_content.append(f"File: {file.filename}")
-        diff_content.append(f"Status: {file.status}")
-        diff_content.append(f"Changes: +{file.additions} -{file.deletions}")
-        diff_content.append(f"{'='*80}\n")
+        filename = file.filename
+        if filename.endswith(EXCLUDE_EXT) or any(filename.endswith(f) for f in EXCLUDE_FILES):
+            continue
+
+        diff_content.append(f"--- a/{filename}")
+        diff_content.append(f"+++ b/{filename}")
         if file.patch:
             diff_content.append(file.patch)
+        diff_content.append("") # Empty line to separate files
 
     return "\n".join(diff_content), pr
 
@@ -32,28 +38,25 @@ def review_with_gemini(diff_content, api_key):
     client = genai.Client(api_key=api_key)
     
     # Priority: Flash (fast/efficient) -> Pro (stronger reasoning) -> Legacy
-    model_names = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro']
+    #model_names = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', ]
+    if os.environ.get('GEMINI_MODEL'):
+        model_names = [os.environ.get('GEMINI_MODEL')]
+    else:
+        model_names = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
     
-    prompt = f"""You are an expert code reviewer. Please review the following pull request changes and provide constructive feedback.
+    prompt = f"""Review these pull request changes. Provide constructive feedback focusing on:
+1. Potential Bugs (logic, edge cases)
+2. Security Vulnerabilities
+3. Performance Issues
+4. Code Quality & Best Practices
 
-Focus on:
-1. **Code Quality**: Clean code, readability, maintainability
-2. **Best Practices**: Language-specific conventions and patterns
-3. **Potential Bugs**: Logic errors, edge cases, error handling
-4. **Performance**: Inefficient algorithms or operations
-5. **Security**: Common vulnerabilities (if applicable)
-6. **Testing**: Whether changes need tests or improve testability
-7. **Documentation**: Code comments and documentation needs
+Format:
+- Overall summary
+- Specific issues (filename and lines)
+- Positive highlights
 
-Provide your review in the following format:
-- Start with an overall summary
-- List specific issues or suggestions with file names and line references when possible
-- Be constructive and specific
-- Highlight positive aspects too
-
-Pull Request Changes:
-{diff_content}
-"""
+Changes:
+{diff_content}"""
 
     for name in model_names:
         try:
