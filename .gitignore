@@ -12,13 +12,11 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
-<<<<<<< Updated upstream
 # vscode
 .vscode/
-=======
+
 # wandb
 wandb/
->>>>>>> Stashed changes
 
 # Input preprocessed datasets
 datasets/
@@ -42,19 +40,18 @@ presentation/*
 
 core
 
-<<<<<<< Updated upstream
-# Config
+# Config (keep README only)
 config/
+!config/README.md
 
 # Data
 data/
 
 # example
 example/
-=======
-# Patch 
+
+# Patch
 patches/
->>>>>>> Stashed changes
 
 # AGENTS.md
 AGENTS.md
@@ -285,3 +282,28 @@ data/TabSyn/impute/*
 !data/TabSyn/impute/.gitkeep
 data/TabSyn/ckpt/*
 !data/TabSyn/ckpt/.gitkeep
+
+# ──────────────────────────────────────────────
+# Files that should never be accidentally committed
+# ──────────────────────────────────────────────
+
+# One-off training / fix scripts at repo root
+train_*.sh
+train_*.py
+check_and_fix_pytorch.sh
+
+# Docker local overrides
+docker/.dockerignore
+docker/docker-compose.yml
+
+# Extra docs (keep only docs/*.md whitelisted above)
+docs/*.md
+!docs/CLAUDE.md
+!docs/README.md
+
+# Extra integration tests not ready for CI
+tests/integration/test_cli_entrypoint.py
+tests/integration/test_device_training.py
+
+# Extra config presets
+config/default_*.json
