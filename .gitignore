@@ -301,9 +301,5 @@ docs/*.md
 !docs/CLAUDE.md
 !docs/README.md
 
-# Extra integration tests not ready for CI
-tests/integration/test_cli_entrypoint.py
-tests/integration/test_device_training.py
-
 # Extra config presets
-config/default_*.json
+!config/default_*.json
