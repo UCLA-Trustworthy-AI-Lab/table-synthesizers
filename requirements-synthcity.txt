@@ -1,0 +1,19 @@
+# =============================================================================
+# Synthcity Requirements - BayesianNetwork, ARF, GREAT, NFlow models
+# =============================================================================
+# Install:
+#   pip install -r requirements.txt
+#   pip install -r requirements-gpu.txt   (or requirements-cpu.txt)
+#   pip install -r requirements-synthcity.txt
+#
+# This provides: BayesianNetwork, ARF, GREAT, NFlow
+# Tested on: conda env ts311 (Python 3.11)
+#
+# Known issues:
+#   - Python 3.12 + ARM64: torchtext wheels unavailable, GREAT/NFlow may fail
+#   - synthcity pulls opacus, torchtext, pgmpy as transitive deps
+#   - Best compatibility: Python 3.11 (ts311 conda environment)
+# =============================================================================
+
+# Synthcity framework (includes all 4 plugin models)
+synthcity>=0.2.12
