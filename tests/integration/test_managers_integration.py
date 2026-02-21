@@ -23,7 +23,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from stg.data_manager import DataManager
 from stg.config_manager import ConfigManager
-from stg.wandb_manager import WandbManager
+
+try:
+    from stg.wandb_manager import WandbManager
+    HAS_WANDB = True
+except ImportError:
+    HAS_WANDB = False
 
 
 def test_data_manager():
@@ -231,6 +236,10 @@ def test_wandb_manager(enable_wandb=False):
     print("\n" + "="*80)
     print("TESTING WandbManager")
     print("="*80)
+
+    if not HAS_WANDB:
+        print("\n⚠️  wandb not installed, skipping WandbManager tests")
+        return
 
     if not enable_wandb:
         print("\n⚠️  WandB testing disabled (use --with-wandb to enable)")

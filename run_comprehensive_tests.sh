@@ -1,6 +1,6 @@
 #!/bin/bash
 # Comprehensive test runner for table-synthesizers framework
-# Supports full test suite, specific algorithms, and specialized test categories
+# Supports full test suite, specific algorithms, edge case tiers, and specialized test categories
 
 set -e  # Exit on any error
 
@@ -9,14 +9,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_DIR="$SCRIPT_DIR/tests"
 CONDA_ENV="table-synthesizers"
 
-# Test categories
+# Test categories -- algorithm groups
 CORE_ALGORITHMS=("identity" "TVAE" "TabDDPM")
-STABLE_ALGORITHMS=("CART" "DPCART" "SMOTE" "ARF" "BayesianNetwork" "GREAT" "NFlow")
+STABLE_ALGORITHMS=("CART" "DPCART" "SMOTE" "GaussianCopula" "TabDiff" "TabPFGen")
+SYNTHCITY_ALGORITHMS=("ARF" "BayesianNetwork" "GREAT" "NFlow")
 EXPERIMENTAL_ALGORITHMS=("TabSyn" "AutoDiff" "CTGAN" "PATECTGAN")
 OPTIONAL_ALGORITHMS=("AIM")
 # LTM tests - currently only unit test available, integration tests not yet implemented
 LTM_TESTS=("ltm_vae")  # Maps to tests/unit/test_ltm_vae.py
 LIBZERO_TESTS=("test_libzero_workaround" "test_libzero_proof" "test_affected_modules" "test_pytorch_compatibility")
+
+# Edge case test file (uses pytest markers for tier filtering)
+EDGE_CASE_TEST="$TEST_DIR/integration/test_edge_cases.py"
 
 # Colors for output
 RED='\033[0;31m'
@@ -111,7 +115,6 @@ except ImportError as e:
 }
 
 # Run individual test
-# Run individual test
 run_test() {
     local test_name="$1"
     local test_path=""
@@ -119,7 +122,7 @@ run_test() {
 
     # Normalize test name (lowercase for case-insensitive matching)
     local lower_name=$(echo "$test_name" | tr '[:upper:]' '[:lower:]')
-    
+
     # 1. Check for specific file in integration (preferred)
     if [[ -f "$TEST_DIR/integration/${test_name}.py" ]]; then
         test_path="$TEST_DIR/integration/${test_name}.py"
@@ -127,27 +130,27 @@ run_test() {
     elif [[ -f "$TEST_DIR/integration/${test_name}" ]]; then
         test_path="$TEST_DIR/integration/${test_name}"
         found_category="integration"
-    
+
     # 2. Check for test_{name}_integration.py convention in integration
     elif [[ -f "$TEST_DIR/integration/test_${lower_name}_integration.py" ]]; then
         test_path="$TEST_DIR/integration/test_${lower_name}_integration.py"
         found_category="integration"
-        
+
     # 3. Check for test_{name}.py in integration (legacy/direct names)
     elif [[ -f "$TEST_DIR/integration/test_${test_name}.py" ]]; then
         test_path="$TEST_DIR/integration/test_${test_name}.py"
         found_category="integration"
-        
+
     # 4. Check for test_{name}.py in unit
     elif [[ -f "$TEST_DIR/unit/test_${lower_name}.py" ]]; then
         test_path="$TEST_DIR/unit/test_${lower_name}.py"
         found_category="unit"
-        
+
     # 5. Check for test_{name}.py in unit (case sensitive)
     elif [[ -f "$TEST_DIR/unit/test_${test_name}.py" ]]; then
         test_path="$TEST_DIR/unit/test_${test_name}.py"
         found_category="unit"
-    
+
     # 6. Direct file path check (if user provided relative path)
     elif [[ -f "$test_name" ]]; then
         test_path="$test_name"
@@ -208,6 +211,55 @@ run_test_category() {
     return $failed
 }
 
+# Run edge case tests with optional marker filter
+run_edge_case_tests() {
+    local tier="$1"  # "core", "synthcity", "gpu", or "all"
+    local marker_args=""
+    local label=""
+
+    case "$tier" in
+        core)
+            marker_args="-m edge_core"
+            label="CORE MODEL EDGE CASES (Identity, CART, DPCART, TVAE, TabDiff, TabPFGen, ...)"
+            ;;
+        synthcity)
+            marker_args="-m edge_synthcity"
+            label="SYNTHCITY MODEL EDGE CASES (ARF, BayesianNetwork, GREAT, NFlow)"
+            ;;
+        gpu)
+            marker_args="-m edge_gpu"
+            label="GPU MODEL EDGE CASES (CTGAN, PATECTGAN, TabDDPM, AutoDiff, TabSyn)"
+            ;;
+        all)
+            marker_args=""
+            label="ALL EDGE CASES (core + synthcity + GPU)"
+            ;;
+        *)
+            log_error "Unknown edge case tier: $tier"
+            return 1
+            ;;
+    esac
+
+    log_header "🔬 TESTING $label"
+
+    cd "$SCRIPT_DIR"
+    if [[ -n "$marker_args" ]]; then
+        python -m pytest "$EDGE_CASE_TEST" $marker_args -v || {
+            log_error "Edge case tests ($tier) failed"
+            return 1
+        }
+    else
+        python -m pytest "$EDGE_CASE_TEST" -v || {
+            log_error "Edge case tests (all) failed"
+            return 1
+        }
+    fi
+
+    log_success "Edge case tests ($tier) passed"
+    echo
+    return 0
+}
+
 # Show usage
 show_usage() {
     cat << EOF
@@ -215,29 +267,46 @@ Usage: $0 [OPTIONS] [ALGORITHMS...]
 
 Run comprehensive tests for the table-synthesizers framework.
 
-OPTIONS:
-    --full                  Run all tests (default)
-    --core                  Run core algorithm tests only (identity, TVAE, TabDDPM)
-    --stable                Run stable algorithm tests (CART, DPCART, SMOTE)
-    --experimental          Run experimental algorithm tests (TabSyn, AutoDiff, etc.)
-    --optional              Run optional dependency tests (AIM, ARF, etc.)
-    --ltm                   Run LTM-VAE specific tests
+ALGORITHM TEST OPTIONS:
+    --full                  Run all tests including edge cases (default)
+    --core                  Core algorithm tests (Identity, TVAE, TabDDPM)
+    --stable                Stable algorithm tests (CART, DPCART, SMOTE, GaussianCopula,
+                            TabDiff, TabPFGen)
+    --synthcity             Synthcity-backend algorithm tests (ARF, BayesianNetwork,
+                            GREAT, NFlow)
+    --experimental          Experimental algorithm tests (TabSyn, AutoDiff, CTGAN,
+                            PATECTGAN)
+    --optional              Optional dependency tests (AIM)
+    --ltm                   LTM-VAE specific tests
+    --algorithms            All algorithm tests (excludes infrastructure & edge cases)
+
+EDGE CASE TEST OPTIONS:
+    --edge-cases            Run ALL edge case tests (all tiers)
+    --edge-core             Edge cases for core/base models only
+    --edge-synthcity        Edge cases for synthcity models only
+    --edge-gpu              Edge cases for GPU-heavy models only
+
+INFRASTRUCTURE TEST OPTIONS:
     --libzero               Run libzero workaround tests
     --infrastructure        Run infrastructure/compatibility tests
-    --algorithms            Run all algorithm tests (excludes infrastructure)
     --help                  Show this help message
 
 ALGORITHMS:
     Specify individual algorithm names to test specific models:
-    identity, TVAE, TabDDPM, CART, DPCART, SMOTE, TabSyn, AutoDiff,
-    CTGAN, PATECTGAN, AIM, ARF, BayesianNetwork, GREAT, NFlow
+    Identity, TVAE, TabDDPM, CART, DPCART, SMOTE, GaussianCopula, TabDiff,
+    TabPFGen, TabSyn, AutoDiff, CTGAN, PATECTGAN, AIM, ARF, BayesianNetwork,
+    GREAT, NFlow
 
 EXAMPLES:
-    $0                      # Run all tests
-    $0 --core               # Run core algorithms only
-    $0 --ltm                # Run LTM tests only
-    $0 TVAE TabDDPM         # Run specific algorithms
-    $0 --stable --experimental  # Run stable and experimental algorithms
+    $0                              # Run full suite (all algorithms + edge cases)
+    $0 --core                       # Core algorithms only
+    $0 --edge-cases                 # All edge case tests
+    $0 --edge-core                  # Edge cases for core models
+    $0 --edge-synthcity             # Edge cases for synthcity models
+    $0 --edge-gpu                   # Edge cases for GPU models
+    $0 --stable --synthcity         # Stable + synthcity algorithms
+    $0 --core --edge-core           # Core algorithms + their edge cases
+    $0 TVAE TabDDPM                 # Specific algorithms only
 
 EOF
 }
@@ -264,6 +333,10 @@ parse_arguments() {
                 RUN_STABLE=true
                 shift
                 ;;
+            --synthcity)
+                RUN_SYNTHCITY=true
+                shift
+                ;;
             --experimental)
                 RUN_EXPERIMENTAL=true
                 shift
@@ -286,6 +359,22 @@ parse_arguments() {
                 ;;
             --algorithms)
                 RUN_ALGORITHMS=true
+                shift
+                ;;
+            --edge-cases)
+                RUN_EDGE_ALL=true
+                shift
+                ;;
+            --edge-core)
+                RUN_EDGE_CORE=true
+                shift
+                ;;
+            --edge-synthcity)
+                RUN_EDGE_SYNTHCITY=true
+                shift
+                ;;
+            --edge-gpu)
+                RUN_EDGE_GPU=true
                 shift
                 ;;
             --help|-h)
@@ -328,6 +417,11 @@ run_tests() {
             ((total_failed++))
         fi
 
+        # Synthcity algorithms
+        if ! run_test_category "SYNTHCITY ALGORITHMS" "${SYNTHCITY_ALGORITHMS[@]}"; then
+            ((total_failed++))
+        fi
+
         # LTM tests
         if ! run_test_category "LTM TESTS" "${LTM_TESTS[@]}"; then
             ((total_failed++))
@@ -342,6 +436,18 @@ run_tests() {
         # Optional algorithms
         log_warning "Optional algorithms require additional dependencies"
         if ! run_test_category "OPTIONAL ALGORITHMS" "${OPTIONAL_ALGORITHMS[@]}"; then
+            ((total_failed++))
+        fi
+
+        # Edge case tests (all tiers, run separately for clear reporting)
+        log_info "Running edge case tests across all model tiers..."
+        if ! run_edge_case_tests "core"; then
+            ((total_failed++))
+        fi
+        if ! run_edge_case_tests "synthcity"; then
+            ((total_failed++))
+        fi
+        if ! run_edge_case_tests "gpu"; then
             ((total_failed++))
         fi
 
@@ -366,6 +472,12 @@ run_tests() {
             fi
         fi
 
+        if [[ "$RUN_SYNTHCITY" == "true" ]]; then
+            if ! run_test_category "SYNTHCITY ALGORITHMS" "${SYNTHCITY_ALGORITHMS[@]}"; then
+                ((total_failed++))
+            fi
+        fi
+
         if [[ "$RUN_EXPERIMENTAL" == "true" ]]; then
             if ! run_test_category "EXPERIMENTAL ALGORITHMS" "${EXPERIMENTAL_ALGORITHMS[@]}"; then
                 ((total_failed++))
@@ -385,8 +497,33 @@ run_tests() {
         fi
 
         if [[ "$RUN_ALGORITHMS" == "true" ]]; then
-            local all_algorithms=("${CORE_ALGORITHMS[@]}" "${STABLE_ALGORITHMS[@]}" "${EXPERIMENTAL_ALGORITHMS[@]}" "${OPTIONAL_ALGORITHMS[@]}")
+            local all_algorithms=("${CORE_ALGORITHMS[@]}" "${STABLE_ALGORITHMS[@]}" "${SYNTHCITY_ALGORITHMS[@]}" "${EXPERIMENTAL_ALGORITHMS[@]}" "${OPTIONAL_ALGORITHMS[@]}")
             if ! run_test_category "ALL ALGORITHMS" "${all_algorithms[@]}"; then
+                ((total_failed++))
+            fi
+        fi
+
+        # Edge case tests
+        if [[ "$RUN_EDGE_ALL" == "true" ]]; then
+            if ! run_edge_case_tests "all"; then
+                ((total_failed++))
+            fi
+        fi
+
+        if [[ "$RUN_EDGE_CORE" == "true" ]]; then
+            if ! run_edge_case_tests "core"; then
+                ((total_failed++))
+            fi
+        fi
+
+        if [[ "$RUN_EDGE_SYNTHCITY" == "true" ]]; then
+            if ! run_edge_case_tests "synthcity"; then
+                ((total_failed++))
+            fi
+        fi
+
+        if [[ "$RUN_EDGE_GPU" == "true" ]]; then
+            if ! run_edge_case_tests "gpu"; then
                 ((total_failed++))
             fi
         fi
@@ -424,6 +561,8 @@ generate_summary() {
         log_info "  • Verify conda environment setup"
         log_info "  • Review PYTHONPATH configuration"
         log_info "  • Check libzero workaround application"
+        log_info "  • For synthcity edge cases: pip install -r requirements-synthcity.txt"
+        log_info "  • For GPU edge cases: ensure CUDA/MPS device available"
     fi
 
     echo
@@ -445,12 +584,17 @@ trap 'log_error "Test interrupted"; exit 130' INT
 RUN_FULL=false
 RUN_CORE=false
 RUN_STABLE=false
+RUN_SYNTHCITY=false
 RUN_EXPERIMENTAL=false
 RUN_OPTIONAL=false
 RUN_LTM=false
 RUN_LIBZERO=false
 RUN_INFRASTRUCTURE=false
 RUN_ALGORITHMS=false
+RUN_EDGE_ALL=false
+RUN_EDGE_CORE=false
+RUN_EDGE_SYNTHCITY=false
+RUN_EDGE_GPU=false
 SPECIFIC_ALGORITHMS=()
 
 # Main execution
