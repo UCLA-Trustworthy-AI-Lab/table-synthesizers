@@ -57,4 +57,4 @@ outputs/
 wandb/
 
 # ─── Docker itself (don't re-include docker files in context layers) ──────────
-docker/
+# (Removed docker/ because buildx needs to read the Dockerfile from context)
