@@ -1,13 +1,13 @@
-name: "📦 Publish Base Image to GHCR"
+name: "📦 Publish Images to GHCR"
 
 # Auto-publish on merge to main, or manually trigger a push
 on:
   push:
     branches: [main, master]
     paths:
-      - 'docker/Dockerfile.base'
-      - 'requirements.txt'
-      - 'requirements-base.txt'
+      - 'docker/Dockerfile.*'
+      - '.dockerignore'
+      - 'requirements*'
       - 'src/**'
       - 'pyproject.toml'
   workflow_dispatch:
@@ -18,20 +18,33 @@ on:
         default: ''
 
 concurrency:
-  group: publish-base-image
+  group: publish-images
   cancel-in-progress: false   # Never cancel a publish mid-push
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/ohsono/table-synthesizers-base
 
 jobs:
   build-and-push:
-    name: Build & Push Base Image
+    name: Build & Push (${{ matrix.tier }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write   # Required to push to GHCR
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tier: base
+            dockerfile: docker/Dockerfile.base
+            image: ghcr.io/ohsono/table-synthesizers-base
+          - tier: gpu
+            dockerfile: docker/Dockerfile.gpu
+            image: ghcr.io/ohsono/table-synthesizers-gpu
+          - tier: synthcity
+            dockerfile: docker/Dockerfile.synthcity
+            image: ghcr.io/ohsono/table-synthesizers-synthcity
 
     steps:
       - uses: actions/checkout@v4
@@ -50,22 +63,22 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: ${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
-      - name: Build and push base image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.base
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
+          cache-from: type=gha,scope=${{ matrix.tier }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tier }}
 
       - name: Image digest
-        run: echo "Pushed ${{ env.IMAGE }} → ${{ steps.build-and-push.outputs.digest }}"
+        run: echo "Pushed ${{ matrix.image }} → ${{ steps.build-and-push.outputs.digest }}"

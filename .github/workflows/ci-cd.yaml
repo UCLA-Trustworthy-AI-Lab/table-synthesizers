@@ -52,7 +52,7 @@ jobs:
           MODELS=$(echo "$CHANGED" | grep '^src/stg/' | cut -d'/' -f3 | sort -u | tr '\n' ',' | sed 's/,$//')
           HAS_MODELS=$([ -n "$MODELS" ] && echo "true" || echo "false")
 
-          DOCKER_CHANGED=$(echo "$CHANGED" | grep -E '^(docker/Dockerfile|requirements)' | wc -l)
+          DOCKER_CHANGED=$(echo "$CHANGED" | grep -E '^(docker/|requirements|\.dockerignore)' | wc -l)
           HAS_DOCKER=$([ "$DOCKER_CHANGED" -gt "0" ] && echo "true" || echo "false")
 
           echo "models_changed=$MODELS" >> $GITHUB_OUTPUT
