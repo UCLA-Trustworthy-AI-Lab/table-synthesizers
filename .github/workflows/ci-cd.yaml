@@ -3,11 +3,10 @@ name: CI/CD Pipeline
 # ═══════════════════════════════════════════════════════════
 # AUTO TRIGGERS ONLY – push and pull_request
 # For manual individual stage runs, use the dedicated workflows:
-#   → Actions > "Unit Tests"
-#   → Actions > "Integration Tests"
-#   → Actions > "Edge Case Tests"
-#   → Actions > "Docker Build"
-#   → Actions > "GPU Tests"
+#   → Actions > "Unit Tests" (push only)
+#   → Actions > "Integration Tests" (PR only)
+#   → Actions > "Edge Case Tests" (PR only)
+#   → Actions > "GPU Tests" (PR only)
 # ═══════════════════════════════════════════════════════════
 
 on:
@@ -72,37 +71,32 @@ jobs:
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && needs.detect-changes.outputs.has_model_changes == 'true')
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
-
-      - name: Run targeted unit tests (push)
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run targeted unit tests in Docker (push)
         if: github.event_name == 'push'
-        run: python tests/run_changed_models.py origin/main
-
-      - name: Run full unit tests (PR)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/app -w /app \
+            -e CHANGED_MODELS="${{ needs.detect-changes.outputs.models_changed }}" \
+            ghcr.io/ohsono/table-synthesizers-base:latest \
+            bash -c "python tests/run_changed_models.py"
+      - name: Run full unit tests in Docker (PR)
         if: github.event_name == 'pull_request'
         run: |
-          pytest tests/unit/ \
-            --ignore-glob="**/test_arf.py" \
-            --ignore-glob="**/test_bayesian_network.py" \
-            --ignore-glob="**/test_great.py" \
-            --ignore-glob="**/test_nflow.py" \
-            --ignore-glob="**/test_smote.py" \
-            -v --tb=short
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+            bash -c "pytest tests/unit/ \
+              --ignore-glob='**/test_arf.py' \
+              --ignore-glob='**/test_bayesian_network.py' \
+              --ignore-glob='**/test_great.py' \
+              --ignore-glob='**/test_nflow.py' \
+              --ignore-glob='**/test_smote.py' \
+              -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
   # 3. Integration tests (PR only)
@@ -114,21 +108,18 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
       - name: Setup Sandbox Datasets
         run: python tests/integration/setup_sandbox_datasets.py
-      - name: Run integration tests
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run integration tests in Docker
         run: |
-          pytest tests/integration/ \
-            --ignore-glob="**/test_edge_cases.py" \
-            -v --tb=short
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+            bash -c "pytest tests/integration/ --ignore-glob='**/test_edge_cases.py' -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
   # 4. Edge case tests (PR only)
@@ -140,59 +131,21 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
       - name: Setup Sandbox Datasets
         run: python tests/integration/setup_sandbox_datasets.py
-      - name: Run edge case tests
-        run: pytest tests/integration/test_edge_cases.py -v --tb=short
-
-  # ─────────────────────────────────────────────────────────────
-  # 5. Docker build
-  #    push   → only if Dockerfile/requirements changed
-  #    PR     → always, and runs tests inside container
-  # ─────────────────────────────────────────────────────────────
-  docker-build:
-    name: Docker Build (${{ matrix.tier }})
-    needs: detect-changes
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && needs.detect-changes.outputs.docker_changed == 'true')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - tier: base
-            dockerfile: docker/Dockerfile.base
-            image: table-synthesizers-base
-          - tier: synthcity
-            dockerfile: docker/Dockerfile.synthcity
-            image: table-synthesizers-synthcity
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: false
-          load: true
-          tags: ${{ matrix.image }}:ci
-          cache-from: type=gha,scope=${{ matrix.tier }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.tier }}
-      - name: Run tests inside Docker (PR only)
-        if: github.event_name == 'pull_request'
-        run: docker run --rm ${{ matrix.image }}:ci
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run edge case tests in Docker
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+            bash -c "pytest tests/integration/test_edge_cases.py -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
-  # 6. GPU tests (PR only, CPU fallback)
+  # 5. GPU tests (PR only, CPU fallback)
   # ─────────────────────────────────────────────────────────────
   gpu-tests:
     name: GPU Tests (CPU Fallback)
@@ -201,24 +154,21 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          python-version: '3.11'
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --system -r requirements-gpu.txt
-          uv pip install --system pytest
-          uv pip install --system -e .
-      - run: |
-          pytest tests/ -m "not synthcity" \
-            --ignore-glob="**/test_arf.py" \
-            --ignore-glob="**/test_bayesian_network.py" \
-            --ignore-glob="**/test_great.py" \
-            --ignore-glob="**/test_nflow.py" \
-            --ignore-glob="**/test_smote.py" \
-            -v --tb=short
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run GPU tests in Docker (CPU Fallback)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-gpu:latest \
+            bash -c "pytest tests/ -m 'not synthcity' \
+              --ignore-glob='**/test_arf.py' \
+              --ignore-glob='**/test_bayesian_network.py' \
+              --ignore-glob='**/test_great.py' \
+              --ignore-glob='**/test_nflow.py' \
+              --ignore-glob='**/test_smote.py' \
+              -v --tb=short"

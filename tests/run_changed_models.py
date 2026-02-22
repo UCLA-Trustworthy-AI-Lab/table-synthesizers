@@ -63,9 +63,15 @@ def run(cmd):
     return subprocess.run(cmd).returncode
 
 def main():
-    base_ref = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    changed_files = get_changed_files(base_ref)
-    changed_models = detect_changed_models(changed_files)
+    import os
+    env_models = os.environ.get("CHANGED_MODELS")
+    
+    if env_models is not None:
+        changed_models = [m.strip() for m in env_models.split(",")] if env_models.strip() else []
+    else:
+        base_ref = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
+        changed_files = get_changed_files(base_ref)
+        changed_models = detect_changed_models(changed_files)
 
     if not changed_models:
         print("✅ No model changes detected — skipping targeted tests.")
