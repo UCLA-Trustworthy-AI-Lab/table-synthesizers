@@ -6,8 +6,10 @@
 # Key optimizations:
 #  1. Multi-stage build — build tools not in runtime layer
 #  2. CPU-only torch pre-installed before synthcity to prevent GPU wheel bloat
-#  3. uv cache mounts — zero pip/uv cache in final image layers
-#  4. Strip __pycache__/.pyc/third-party test dirs from site-packages
+#  3. synthcity installed --no-deps to avoid decaf/torchtext conflicts
+#  4. Only model-specific backends installed (pgmpy, arfpy, be-great, nflows)
+#  5. uv cache mounts — zero pip/uv cache in final image layers
+#  6. Strip __pycache__/.pyc/third-party test dirs from site-packages
 # ───────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: builder ───────────────────────────────────────────────────────────
@@ -25,20 +27,23 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY requirements.txt requirements-synthcity.txt ./
 
-# 1. Install CPU-only torch first, so synthcity/ctgan don't pull GPU wheel
+# 1. Install CPU-only torch first, so nothing downstream pulls GPU wheels
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system \
     torch torchvision \
     --index-url ${TORCH_INDEX_URL}
 
-# 2. Base requirements (pandas, scikit-learn, sdv, etc.)
+# 2. Base requirements (pandas, scikit-learn, etc.)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -r requirements.txt
 
-# 3. Synthcity (heavy — pulls opacus, pgmpy, torchtext as transitive deps)
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r requirements-synthcity.txt
+# 3. Synthcity (heavy — pulls opacus, pgmpy, etc. as transitive deps)
+#    Use pip (not uv) because uv's strict resolver rejects the
+#    decaf-synthetic-data ↔ torch version conflict that pip tolerates.
+#    Upgrade pip/setuptools first to fix sktime flat-layout metadata issue.
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir synthcity>=0.2.12
 
 # 4. Test runner
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -88,4 +93,4 @@ COPY config/ config/
 COPY tests/  tests/
 
 # Default: run synthcity-marked tests
-CMD ["pytest", "-m", "synthcity", "tests/", "-v", "--tb=short"]
+CMD ["pytest", "-m", "synthcity or edge_synthcity", "tests/", "-v", "--tb=short"]
