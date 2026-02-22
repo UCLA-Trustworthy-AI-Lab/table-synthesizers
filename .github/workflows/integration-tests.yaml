@@ -30,6 +30,8 @@ jobs:
           uv pip install --system -r requirements.txt
           uv pip install --system pytest
           uv pip install --system -e .
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
       - name: Run integration tests
         run: |
           pytest tests/integration/ \
@@ -55,5 +57,7 @@ jobs:
           uv pip install --system -r requirements.txt
           uv pip install --system pytest
           uv pip install --system -e .
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
       - name: Run edge case tests
         run: pytest tests/integration/test_edge_cases.py -v --tb=short

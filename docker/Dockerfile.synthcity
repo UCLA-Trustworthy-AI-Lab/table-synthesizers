@@ -38,12 +38,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -r requirements.txt
 
-# 3. Synthcity (heavy — pulls opacus, pgmpy, etc. as transitive deps)
-#    Use pip (not uv) because uv's strict resolver rejects the
-#    decaf-synthetic-data ↔ torch version conflict that pip tolerates.
-#    Upgrade pip/setuptools first to fix sktime flat-layout metadata issue.
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir synthcity>=0.2.12
+# 3. Synthcity (--no-deps to skip decaf-synthetic-data ↔ torch==2.0.1 conflict
+#    and torchtext missing Py3.11 wheels). Install all OTHER deps explicitly.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system synthcity --no-deps && \
+    uv pip install --system \
+        accelerate arfpy "be-great>=0.0.5" cloudpickle \
+        fastai fastcore fflows geomloss importlib-metadata \
+        lifelines loguru monai networkx nflows numpy \
+        opacus optuna pandas pgmpy pycox pydantic \
+        redis scikit-learn scipy shap tenacity \
+        tqdm transformers tsai "xgboost<3.0.0" \
+        ipython xgbse
 
 # 4. Test runner
 RUN --mount=type=cache,target=/root/.cache/uv \

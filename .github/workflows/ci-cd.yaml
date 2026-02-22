@@ -122,7 +122,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
       - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
-      - run: |
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
+      - name: Run integration tests
+        run: |
           pytest tests/integration/ \
             --ignore-glob="**/test_edge_cases.py" \
             -v --tb=short
@@ -145,7 +148,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "requirements*.txt"
       - run: uv pip install --system -r requirements.txt && uv pip install --system pytest && uv pip install --system -e .
-      - run: pytest tests/integration/test_edge_cases.py -v --tb=short
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
+      - name: Run edge case tests
+        run: pytest tests/integration/test_edge_cases.py -v --tb=short
 
   # ─────────────────────────────────────────────────────────────
   # 5. Docker build

@@ -30,6 +30,8 @@ jobs:
           uv pip install --system -r requirements.txt
           uv pip install --system pytest
           uv pip install --system -e .
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
       - name: Run edge cases (filtered)
         if: inputs.model_filter != ''
         run: pytest tests/integration/test_edge_cases.py -k "${{ inputs.model_filter }}" -v --tb=short

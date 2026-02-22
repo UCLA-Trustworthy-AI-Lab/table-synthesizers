@@ -110,7 +110,7 @@ def test_AutoDiff_sandbox_insurance():
 def test_AutoDiff_sandbox_titanic():
     """Test AutoDiff on Titanic dataset"""
     config = {"n_epochs": 10, "diff_n_epochs": 10, "batch_size": 16}
-    run_sandbox_dataset_test('AutoDiff', 'Titanic', config=config, n_samples=50, sample_ratio=0.2)
+    run_sandbox_dataset_test('AutoDiff', 'titanic', config=config, n_samples=50, sample_ratio=0.1)
 
 
 def test_AutoDiff_availability():
