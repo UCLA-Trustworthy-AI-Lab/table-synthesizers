@@ -168,6 +168,8 @@ def sample(
         #np.save(os.path.join(parent_dir, 'X_num_unnorm'), X_gen[:, :num_numerical_features])
         #X_num_ = D.num_transform.inverse_transform(X_gen[:, :num_numerical_features])
         X_num = X_num_[:, :num_numerical_features]
+    else:
+        X_num = np.empty((X_gen.shape[0], 0))
 
         #X_num_real = np.load(os.path.join(real_data_path, "X_num_train.npy"), allow_pickle=True)
         print("data_info['transform_info'].keys()")

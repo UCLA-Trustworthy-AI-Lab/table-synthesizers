@@ -32,6 +32,10 @@ docs/
 *.md
 !README.md
 
+# ─── Workspace ────────────────────────────────────────────────────────────────
+workspace/
+checkpoints/
+
 # ─── Data / model outputs ────────────────────────────────────────────────────
 data/
 datasets/

@@ -22,6 +22,9 @@ wandb/
 datasets/
 dataset/
 
+# checkpoints
+checkpoints/
+
 # Output training datasets
 outputs/
 
