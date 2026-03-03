@@ -3,7 +3,7 @@
     "epochs": 50,
     "batch_size": 100,
     "pac": 1,
-    "num_teachers": 10,
+    "sample_per_teacher": 1000,
     "epsilon": 1.0,
     "delta": 1e-5,
     "embedding_dim": 128,

@@ -125,9 +125,11 @@ class TVAE(BaseSynthesizer):
         decompress_dims=(128, 128),
         l2scale=1e-5,
         batch_size=500,
-        epochs=300,
+        epochs=150,
         loss_factor=2,
         learning_rate=1e-3,
+        patience=10,
+        min_epochs=10,
         cuda=True,
         checkpoint_interval_seconds=None,
         **kwargs):
@@ -141,6 +143,8 @@ class TVAE(BaseSynthesizer):
     self.loss_factor = loss_factor
     self.learning_rate = learning_rate
     self._epochs = epochs
+    self._patience = patience
+    self._min_epochs = min_epochs
 
     # Set device once: respect cuda flag, with auto-detection fallback
     if cuda and torch.cuda.is_available():
@@ -166,11 +170,18 @@ class TVAE(BaseSynthesizer):
     self.decoder.to(self._device)
     
     log_interval = max(1, self._epochs // 10)
+
+    # Early stopping state
+    best_loss = float('inf')
+    epochs_no_improve = 0
+
     for i in range(self._epochs):
         self.current_epoch = i + 1
         if i % log_interval == 0:
             logging.getLogger(__name__).info("TVAE epoch %d/%d", i + 1, self._epochs)
-            
+
+        epoch_loss = 0.0
+        n_batches = 0
         for id_, data in enumerate(train_dataloader):
             self.optimizerAE.zero_grad()
             real = data.to(self._device)
@@ -186,8 +197,25 @@ class TVAE(BaseSynthesizer):
             loss.backward()
             self.optimizerAE.step()
             self.decoder.sigma.data.clamp_(0.01, 1.0)
-            
+
             self.current_training_loss = loss.item()
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        # Early stopping on epoch-average loss
+        avg_loss = epoch_loss / max(n_batches, 1)
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if (i + 1) >= self._min_epochs and epochs_no_improve >= self._patience:
+            logging.getLogger(__name__).info(
+                'TVAE early stopping at epoch %d (patience=%d, best_loss=%.4f)',
+                i + 1, self._patience, best_loss,
+            )
+            break
 
 
   def _generate(self, n, condition=None):

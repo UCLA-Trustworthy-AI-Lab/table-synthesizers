@@ -38,7 +38,7 @@ class CTGAN(BaseSynthesizer):
   """
   This model applies conditional generation and model-specific regularization to generated dataset with both categorical and continous columns. Implementation based on: https://github.com/sdv-dev/CTGAN/blob/main/ctgan/synthesizers/ctgan.py
   """
-  def __init__(self, data_info=None, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=10, pac=5,checkpoint_interval_seconds=None,**kwarg):
+  def __init__(self, data_info=None, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=100, pac=5, patience=15, min_epochs=10, checkpoint_interval_seconds=None,**kwarg):
     BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwarg)
     self.model_loaded = False
     self._epochs = epochs
@@ -69,6 +69,9 @@ class CTGAN(BaseSynthesizer):
     self._verbose = verbose
     self._epochs = epochs
     self.pac = pac
+
+    self._patience = patience
+    self._min_epochs = min_epochs
 
     self._data_sampler = None
     self._generator = None
@@ -110,6 +113,10 @@ class CTGAN(BaseSynthesizer):
     std = mean + 1
 
     steps_per_epoch = max(len(train_dataloader), 1)
+
+    # Early stopping state
+    best_loss_g = float('inf')
+    epochs_no_improve = 0
 
     for i in range(epochs):
         # Update the number of remaining epoch.
@@ -222,7 +229,21 @@ class CTGAN(BaseSynthesizer):
                 float(loss_g.detach().cpu()),
                 float(loss_d.detach().cpu()),
             )
-                      
+
+        # Early stopping on generator loss
+        current_loss_g = float(loss_g.detach().cpu())
+        if current_loss_g < best_loss_g:
+            best_loss_g = current_loss_g
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if (i + 1) >= self._min_epochs and epochs_no_improve >= self._patience:
+            self._logger.info(
+                'CTGAN early stopping at epoch %d (patience=%d, best_loss_g=%.4f)',
+                i + 1, self._patience, best_loss_g,
+            )
+            break
 
   def generate(self, n, condition_column=None, condition_value=None):
         """

@@ -41,7 +41,7 @@ class TabSynSynthesizer(BaseSynthesizer):
         # all temp files removed automatically
     """
     
-    def __init__(self, data_info=None, dataset_name=None, epochs=10, **kwargs):
+    def __init__(self, data_info=None, dataset_name=None, epochs=1000, **kwargs):
         if not TABSYN_AVAILABLE:
             raise ImportError("TabSyn dependencies are required for TabSynSynthesizer")
         

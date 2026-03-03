@@ -1,7 +1,7 @@
 {
     "model": "CTGAN",
     "N": 1000,
-    "epochs": 300,
+    "epochs": 100,
     "batch_size": 500,
     "generator_dim": [
         256,

@@ -1,6 +1,6 @@
 {
     "model_type": "cpu",
-    "epsilon": 1.0,
+    "epsilon_per_tree": 1.0,
     "description": "Differential privacy decision tree",
     "speedup": "1x",
     "quality": "Medium"

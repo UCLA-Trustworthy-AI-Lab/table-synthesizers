@@ -1,7 +1,7 @@
 {
     "model_type": "gpu",
-    "epochs": 100,
-    "batch_size": 256,
+    "steps": 10000,
+    "sample_batch_size": 2000,
     "num_timesteps": 1000,
     "gaussian_loss_type": "mse",
     "scheduler": "cosine",

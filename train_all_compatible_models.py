@@ -428,7 +428,23 @@ def train_and_generate(model_name, train_df, config, num_samples, is_gpu_model=T
         print(f"[VERBOSE] Is GPU model: {is_gpu_model}")
 
     try:
-        # Create synthesizer
+        # Optimize batch size BEFORE creating the synthesizer so the
+        # constructor receives the final value.
+        original_batch_size = config.get('batch_size', None)
+        if 'batch_size' in config and is_gpu_model:
+            optimized_batch_size = optimize_batch_size(
+                model_name,
+                len(train_df),
+                original_batch_size
+            )
+
+            if optimized_batch_size != original_batch_size:
+                config['batch_size'] = optimized_batch_size
+                print(f"Batch size optimized: {original_batch_size} → {optimized_batch_size}")
+            else:
+                print(f"Batch size: {optimized_batch_size}")
+
+        # Create synthesizer (with already-optimized config)
         if verbose:
             print(f"[VERBOSE] Creating TableSynthesizer for {model_name}")
         synthesizer = TableSynthesizer(model_name, config=config)
@@ -461,21 +477,6 @@ def train_and_generate(model_name, train_df, config, num_samples, is_gpu_model=T
                 if hasattr(synthesizer.model, 'discriminator') and synthesizer.model.discriminator is not None:
                     disc_device = next(synthesizer.model.discriminator.parameters()).device
                     print(f"[VERBOSE] Discriminator device: {disc_device}")
-
-        # Optimize batch size if applicable
-        original_batch_size = config.get('batch_size', None)
-        if 'batch_size' in config and is_gpu_model:
-            optimized_batch_size = optimize_batch_size(
-                model_name,
-                len(train_df),
-                original_batch_size
-            )
-
-            if optimized_batch_size != original_batch_size:
-                config['batch_size'] = optimized_batch_size
-                print(f"Batch size optimized: {original_batch_size} → {optimized_batch_size}")
-            else:
-                print(f"Batch size: {optimized_batch_size}")
 
         # Print final config
         config_str = ', '.join([f"{k}={v}" for k, v in config.items()
