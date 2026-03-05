@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from stg.tableSynthesizer import TableSynthesizer
 
+pytestmark = pytest.mark.synthcity
+
 # Check if BayesianNetwork is available
 try:
     from stg.tableSynthesizer import DEFAULT_MODELS

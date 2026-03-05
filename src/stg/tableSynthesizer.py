@@ -39,14 +39,26 @@ except (ImportError, AttributeError) as e:
 # New synthesizers from Gen_MIA experiments
 try:
     from .BayesianNetwork import BayesianNetworkSynthesizer
-    BAYESIANNETWORK_AVAILABLE = True
+    from .BayesianNetwork.bayesian_network_synthesizer import SYNTHCITY_AVAILABLE as _BN_SYNTHCITY_OK
+    BAYESIANNETWORK_AVAILABLE = _BN_SYNTHCITY_OK
+    if not BAYESIANNETWORK_AVAILABLE:
+        logging.getLogger(__name__).warning(
+            "BayesianNetwork not available: synthcity deps missing or pgmpy incompatible "
+            "(requires pgmpy<1.0.0)"
+        )
 except (ImportError, AttributeError) as e:
     BAYESIANNETWORK_AVAILABLE = False
     logging.getLogger(__name__).warning("BayesianNetwork not available due to dependencies: %s", str(e))
 
 try:
     from .GREAT import GREATSynthesizer
-    GREAT_AVAILABLE = True
+    from .GREAT.great_synthesizer import SYNTHCITY_AVAILABLE as _GREAT_SYNTHCITY_OK
+    GREAT_AVAILABLE = _GREAT_SYNTHCITY_OK
+    if not GREAT_AVAILABLE:
+        logging.getLogger(__name__).warning(
+            "GREAT not available: be_great or datasets dependency broken "
+            "(requires datasets>=3.1.0 for pyarrow 14+ compatibility)"
+        )
 except (ImportError, AttributeError) as e:
     GREAT_AVAILABLE = False
     logging.getLogger(__name__).warning("GREAT not available due to dependencies: %s", str(e))

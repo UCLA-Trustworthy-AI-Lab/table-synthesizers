@@ -3,8 +3,11 @@ import sys
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
+
+pytestmark = pytest.mark.gpu
 
 from stg.tableSynthesizer import TableSynthesizer
 

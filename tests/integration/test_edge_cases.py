@@ -89,12 +89,19 @@ SEEDED_MODELS = [
 MULTI_COLUMN_ONLY = {"DPCART", "TabPFGen"}
 
 # Models that cannot handle NaN values natively
-NO_NAN_SUPPORT = {"CART", "DPCART", "TVAE", "CTGAN", "PATECTGAN", "AutoDiff", "TabSyn"}
+# NFlow: synthcity's NFlow uses BayesianGaussianMixture for encoding which rejects NaN
+NO_NAN_SUPPORT = {"CART", "DPCART", "TVAE", "CTGAN", "PATECTGAN", "AutoDiff", "TabSyn", "NFlow"}
 
 N_SAMPLES = 10  # keep small for speed
 
 # Apply edge_case marker to all tests in this module
 pytestmark = pytest.mark.edge_case
+
+# Fast CI configs for slow models (overridden only when caller doesn't specify)
+_FAST_CI_CONFIG = {
+    "GREAT": {"n_iter": 1},   # default 100 LLM epochs is too slow for CI
+    "NFlow": {"n_iter": 5},   # default 1000 flow iterations is too slow for CI
+}
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +110,8 @@ pytestmark = pytest.mark.edge_case
 
 def _fit_sample(model_name: str, df: pd.DataFrame, config: dict | None = None):
     """Fit a model and return sampled DataFrame."""
-    config = config or {}
+    base = _FAST_CI_CONFIG.get(model_name, {})
+    config = {**base, **(config or {})}
     synth = TableSynthesizer(model_name, config)
     synth.fit(df)
     return synth.sample(n=N_SAMPLES, return_dataframe=True)

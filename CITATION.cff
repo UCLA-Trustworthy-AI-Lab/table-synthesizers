@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "table-synthesizers"
+abstract: >
+  A comprehensive Python library providing 16 synthetic tabular data generators
+  with a unified DataFrame interface. Supports GANs, VAEs, Diffusion Models,
+  Transformers, Bayesian Networks, and privacy-preserving methods with GPU acceleration.
+url: "https://github.com/ohsono/table-synthesizers"
+license:
+  - Apache-2.0
+  - MIT
+
+preferred-citation:
+  type: conference-paper
+  title: "SYNTHONY: A Stress-Aware, Intent-Conditioned Agent for Deep Tabular Generative Models Selection"
+  authors:
+    - family-names: Son
+      given-names: Hochan
+    - family-names: Lin
+      given-names: Xiaofeng
+    - family-names: Ni
+      given-names: Jason
+    - family-names: Cheng
+      given-names: Guang
+  collection-title: "ICLR 2026 2nd Workshop on Deep Generative Model in Machine Learning: Theory, Principle and Efficacy"
+  year: 2026

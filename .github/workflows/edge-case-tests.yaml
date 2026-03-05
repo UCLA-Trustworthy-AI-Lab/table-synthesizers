@@ -16,6 +16,9 @@ jobs:
   edge-case-tests:
     name: Edge Case Tests [${{ inputs.model_filter }}]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
       - name: Setup Sandbox Datasets
@@ -26,6 +29,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build base image
+        run: |
+          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker buildx build -f docker/Dockerfile.base \
+            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
       - name: Run edge cases in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \

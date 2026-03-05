@@ -10,6 +10,8 @@ from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
 from utils import run_sandbox_dataset_test, load_sandbox_datasets
 
+pytestmark = pytest.mark.gpu
+
 @pytest.fixture
 def data():
     return load_and_process_data()

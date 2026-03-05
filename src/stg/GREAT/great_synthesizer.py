@@ -8,8 +8,13 @@ from ..base import BaseSynthesizer
 try:
     from synthcity.plugins import Plugins
     from synthcity.plugins.core.dataloader import GenericDataLoader
+    # Verify be_great and its datasets dependency are importable.
+    # be_great requires datasets>=3.1.0 for pyarrow 14+ compatibility.
+    # If datasets is too old (uses pa.PyExtensionType removed in pyarrow 14),
+    # be_great import will fail with AttributeError at module level.
+    import be_great as _be_great_check  # noqa: F401
     SYNTHCITY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     SYNTHCITY_AVAILABLE = False
 
 
@@ -137,6 +142,14 @@ class GREATSynthesizer(BaseSynthesizer):
         if hasattr(self, '_epochs') and self._epochs is not None and 'n_iter' not in plugin_kwargs:
             plugin_kwargs['n_iter'] = self._epochs
 
+        # Auto-detect device if not explicitly set by user (CUDA → CPU fallback)
+        # Synthcity GREAT accepts "cuda" or "cpu" only (not "mps")
+        if 'device' not in plugin_kwargs:
+            from ..gpu_utils import detect_best_device
+            detected = detect_best_device()
+            plugin_kwargs['device'] = "cuda" if detected.type == "cuda" else "cpu"
+            logger.info("GREAT: auto-detected device: %s", plugin_kwargs['device'])
+
         if plugin_kwargs:
             logger.info("GREAT: using plugin params: %s", plugin_kwargs)
 
@@ -180,14 +193,29 @@ class GREATSynthesizer(BaseSynthesizer):
             return torch.tensor(encoded_df.values, dtype=torch.float32)
 
     def _encode_for_tensor(self, df):
-        """Encode DataFrame for tensor conversion."""
+        """Encode DataFrame for tensor conversion.
+
+        Normalises every column to float64 so that df.values returns a
+        homogeneous numpy array that torch can consume.  In pandas 2.0+ a
+        DataFrame with mixed numeric dtypes (bool + int64 + float64) can
+        return an object-dtype array from .values, which torch rejects.
+
+        Rules applied per column:
+          - pd.Categorical → cast to object first (avoids code-vs-label mismatch)
+          - non-numeric (object/string/bool-object) → label-encode → float64
+          - numeric (bool, int*, float*) → cast to float64 directly
+        """
         encoded_df = df.copy()
 
         for col in df.columns:
-            if not pd.api.types.is_numeric_dtype(df[col]):
-                # Encode categorical column to integers
-                categories = pd.Categorical(df[col])
-                encoded_df[col] = categories.codes
+            series = encoded_df[col]
+            if isinstance(series.dtype, pd.CategoricalDtype):
+                encoded_df[col] = series.astype(object)
+                series = encoded_df[col]
+            if not pd.api.types.is_numeric_dtype(series):
+                encoded_df[col] = pd.Categorical(series).codes.astype(np.float64)
+            else:
+                encoded_df[col] = series.astype(np.float64)
 
         return encoded_df
 

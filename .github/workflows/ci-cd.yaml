@@ -68,6 +68,9 @@ jobs:
     name: Unit Tests
     needs: detect-changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && needs.detect-changes.outputs.has_model_changes == 'true')
@@ -79,6 +82,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build base image
+        run: |
+          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker buildx build -f docker/Dockerfile.base \
+            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
       - name: Run targeted unit tests in Docker (push)
         if: github.event_name == 'push'
         run: |
@@ -105,6 +113,9 @@ jobs:
     name: Integration Tests
     needs: unit-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +127,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build base image
+        run: |
+          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker buildx build -f docker/Dockerfile.base \
+            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
       - name: Run integration tests in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
@@ -128,6 +144,9 @@ jobs:
     name: Edge Case Tests
     needs: integration-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +158,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build base image
+        run: |
+          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker buildx build -f docker/Dockerfile.base \
+            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
       - name: Run edge case tests in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
@@ -151,6 +175,9 @@ jobs:
     name: GPU Tests (CPU Fallback)
     needs: unit-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +189,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build GPU image
+        run: |
+          docker pull ghcr.io/ohsono/table-synthesizers-gpu:latest || \
+          docker buildx build -f docker/Dockerfile.gpu \
+            -t ghcr.io/ohsono/table-synthesizers-gpu:latest --load .
       - name: Run GPU tests in Docker (CPU Fallback)
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-gpu:latest \

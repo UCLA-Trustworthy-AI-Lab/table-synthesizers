@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from stg.tableSynthesizer import TableSynthesizer
 from utils import run_sandbox_dataset_test
 
+pytestmark = pytest.mark.gpu
+
 # Check if AutoDiff is actually available (dependencies installed)
 try:
     from stg.AutoDiff.autodiff_synthesizer import AUTODIFF_AVAILABLE

@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from stg.tableSynthesizer import TableSynthesizer
 
+pytestmark = pytest.mark.synthcity
+
 # Check if GREAT is available
 try:
     from stg.tableSynthesizer import DEFAULT_MODELS
@@ -45,10 +47,10 @@ def test_GREAT_dataframe_support():
     """Test GREAT with DataFrame input"""
     # Create test DataFrame
     df = create_test_dataframe()
-    
-    # Configuration for GREAT
-    config = {}
-    
+
+    # Use n_iter=1 for CI speed (default 100 epochs of LLM fine-tuning is very slow)
+    config = {"n_iter": 1}
+
     # Initialize synthesizer
     synthesizer = TableSynthesizer('GREAT', config)
     
@@ -84,8 +86,9 @@ def test_GREAT_different_data_types():
         'category_col': np.random.choice(['X', 'Y', 'Z'], 40),
         'binary_col': np.random.choice(['Yes', 'No'], 40)
     })
-    
-    config = {}
+
+    # Use n_iter=1 for CI speed
+    config = {"n_iter": 1}
     synthesizer = TableSynthesizer('GREAT', config)
     synthesizer.fit(df)
     

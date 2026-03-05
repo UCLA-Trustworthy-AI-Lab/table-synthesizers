@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from stg.tableSynthesizer import TableSynthesizer
 
+pytestmark = pytest.mark.synthcity
+
 # Check if NFlow is available
 try:
     from stg.tableSynthesizer import DEFAULT_MODELS
@@ -45,10 +47,10 @@ def test_NFlow_dataframe_support():
     """Test NFlow with DataFrame input"""
     # Create test DataFrame
     df = create_test_dataframe()
-    
-    # Configuration for NFlow
-    config = {}
-    
+
+    # Use n_iter=5 for CI speed (default 1000 iterations is very slow)
+    config = {"n_iter": 5}
+
     # Initialize synthesizer
     synthesizer = TableSynthesizer('NFlow', config)
     
@@ -84,8 +86,9 @@ def test_NFlow_different_data_types():
         'category_col': np.random.choice(['X', 'Y', 'Z'], 40),
         'binary_col': np.random.choice(['Yes', 'No'], 40)
     })
-    
-    config = {}
+
+    # Use n_iter=5 for CI speed
+    config = {"n_iter": 5}
     synthesizer = TableSynthesizer('NFlow', config)
     synthesizer.fit(df)
     

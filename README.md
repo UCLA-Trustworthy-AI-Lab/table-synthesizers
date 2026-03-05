@@ -341,6 +341,19 @@ Full documentation is available in the [docs/](docs/) directory:
 5. Add integration tests in `tests/integration/test_your_model_integration.py`
 6. Update documentation
 
+## Citation
+
+If you use this library in your research, please cite:
+
+```bibtex
+@inproceedings{son2026synthony,
+  title={{SYNTHONY}: A Stress-Aware, Intent-Conditioned Agent for Deep Tabular Generative Models Selection},
+  author={Hochan Son and Xiaofeng Lin and Jason Ni and Guang Cheng},
+  booktitle={ICLR 2026 2nd Workshop on Deep Generative Model in Machine Learning: Theory, Principle and Efficacy},
+  year={2026},
+}
+```
+
 ## License
 
 This project is dual-licensed under Apache-2.0 OR MIT.

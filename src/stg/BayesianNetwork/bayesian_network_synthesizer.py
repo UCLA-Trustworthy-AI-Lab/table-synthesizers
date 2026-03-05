@@ -8,8 +8,20 @@ from ..base import BaseSynthesizer
 try:
     from synthcity.plugins import Plugins
     from synthcity.plugins.core.dataloader import GenericDataLoader
+    # pgmpy 1.0.0 introduced too many breaking changes for the synthcity version
+    # we depend on (K2Score→K2, BicScore→BIC, BayesianNetwork→DiscreteBayesianNetwork,
+    # etc.). Pin pgmpy<1.0.0 in the Docker image; mark unavailable otherwise so
+    # tests gracefully skip instead of erroring.
+    import pgmpy as _pgmpy_check
+    _pgmpy_major = int(_pgmpy_check.__version__.split('.')[0])
+    if _pgmpy_major >= 1:
+        raise ImportError(
+            f"pgmpy {_pgmpy_check.__version__} is not compatible with this version "
+            "of synthcity. BayesianNetwork requires pgmpy<1.0.0. "
+            "Rebuild the Docker image with the pinned version."
+        )
     SYNTHCITY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError, ValueError):
     SYNTHCITY_AVAILABLE = False
 
 

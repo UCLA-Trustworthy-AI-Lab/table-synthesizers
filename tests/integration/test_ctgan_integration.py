@@ -10,6 +10,8 @@ from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
 from utils import run_sandbox_dataset_test
 
+pytestmark = pytest.mark.gpu
+
 # ---------------------------------------------------------------------------
 # Skip sandbox tests if no external dataset directory is available.
 # Set DATASET_PATH env var or place CSVs in tests/integration/test_data/sandbox_datasets/

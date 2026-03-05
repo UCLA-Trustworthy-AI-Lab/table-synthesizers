@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from stg.tableSynthesizer import TableSynthesizer
 from test_data.data_info import load_and_process_data
 
+pytestmark = pytest.mark.gpu
+
 @pytest.fixture
 def data():
     return load_and_process_data()

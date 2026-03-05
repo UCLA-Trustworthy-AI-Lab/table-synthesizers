@@ -10,6 +10,8 @@
 #  3. Merged RUN layers → fewer layer diffs
 #  4. uv cache mounts → zero pip/uv cache in final image layers
 #  5. Strip __pycache__/.pyc/test dirs from site-packages
+#  6. venv at /opt/venv — predictable path (Ubuntu apt uses dist-packages, not
+#     site-packages, so --system installs go to the wrong location)
 # ───────────────────────────────────────────────────────────────────────────────
 
 ARG CUDA_VERSION=13.0
@@ -34,27 +36,34 @@ RUN apt-get update && \
 # uv binary (tiny, ~10 MB)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Create a virtualenv so packages land at a predictable path (/opt/venv)
+# regardless of Ubuntu's dist-packages vs site-packages layout.
+# --copies avoids symlinks → venv is self-contained when copied to runtime.
+RUN python3.11 -m venv --copies /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv"
+
 COPY requirements.txt requirements-gpu.txt ./
 
 # 1. Install base requirements (scikit-learn, pandas, sdv, etc.)
 #    Use CPU-only torch as a placeholder so sdv/ctgan don't pull their own wheel.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install \
     torch torchvision \
     --index-url https://download.pytorch.org/whl/cpu && \
-    uv pip install --system -r requirements.txt
+    uv pip install -r requirements.txt
 
 # 2. Overwrite torch with the real CUDA wheel (as a separate layer for caching)
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --force-reinstall \
+    uv pip install --force-reinstall \
     "torch>=2.7.0" "torchvision>=0.22.0" \
     --index-url ${TORCH_INDEX_URL}
 
 # 3. GPU-specific extras (transformers, datasets, accelerate, ema-pytorch, boto3)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system pytest && \
-    uv pip install --system \
+    uv pip install pytest && \
+    uv pip install \
     "transformers>=4.0.0" \
     "datasets>=2.0.0" \
     "accelerate>=0.20.0" \
@@ -66,13 +75,13 @@ COPY src/ src/
 COPY setup.cfg pyproject.toml ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -e .
+    uv pip install -e .
 
 # 5. Strip compiled bytecode and third-party test dirs (~100–200 MB)
-RUN find /usr/local/lib/python3.11/site-packages -type d -name "__pycache__" \
+RUN find /opt/venv/lib/python3.11/site-packages -type d -name "__pycache__" \
     -exec rm -rf {} + 2>/dev/null || true && \
-    find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete && \
-    find /usr/local/lib/python3.11/site-packages -type d \
+    find /opt/venv/lib/python3.11/site-packages -name "*.pyc" -delete && \
+    find /opt/venv/lib/python3.11/site-packages -type d \
     \( -name "tests" -o -name "test" \) \
     \( -not -path "*/stg/*" \) \
     -exec rm -rf {} + 2>/dev/null || true
@@ -86,7 +95,7 @@ WORKDIR /app
 # Runtime deps only: Python + libgomp (OpenMP for scikit-learn/torch)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python3.11 python3-pip \
+    python3.11 python3.11-venv \
     libgomp1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python  python  /usr/bin/python3.11 1 && \
@@ -94,10 +103,12 @@ RUN apt-get update && \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy only runtime artifacts from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages \
-    /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy the complete virtualenv from builder (includes pytest, torch, all deps)
+COPY --from=builder /opt/venv /opt/venv
+
+# Activate the venv for all subsequent RUN/CMD/ENTRYPOINT calls
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv"
 
 COPY --from=builder /app/src          src/
 COPY --from=builder /app/setup.cfg    ./
