@@ -84,7 +84,8 @@ class TabSynSynthesizer(BaseSynthesizer):
         
         # Save current directory
         original_dir = os.getcwd()
-        
+        _training_succeeded = False
+
         try:
             start_total = time.time()
             # Change to TabSyn directory 
@@ -167,16 +168,18 @@ class TabSynSynthesizer(BaseSynthesizer):
 
             print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             self.trained = True
+            _training_succeeded = True
             print(f"[TabSyn][train] Completed in {time.time()-start_total:.2f}s", flush=True)
-            
+
         except Exception as e:
             print(f"TabSyn training error: {e}", flush=True)
             import traceback
             traceback.print_exc()
-            self.cleanup()
             raise RuntimeError(f"TabSyn training failed: {e}")
 
         finally:
+            if not _training_succeeded:
+                self.cleanup()
             # Always restore original directory
             os.chdir(original_dir)
             print(f"[TabSyn][train] Restored working directory to {os.getcwd()}", flush=True)
