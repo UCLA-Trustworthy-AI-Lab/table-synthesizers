@@ -1,0 +1,158 @@
+import pandas as pd
+from pathlib import Path
+import torch
+from stg import (
+    TableSynthesizer,
+)
+
+import signal
+import time
+import wandb
+
+# ==== Timeout setup ====
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutException()
+
+signal.signal(signal.SIGALRM, timeout_handler)
+PER_MODEL_TIMEOUT = 600
+
+# ==== Paths ====
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "test_data"
+OUTPUT_DIR = BASE_DIR / "synth_data"
+OUTPUT_DIR.mkdir(exist_ok=True)
+csv_files = sorted(DATA_DIR.glob("*.csv"))
+if not csv_files:
+    raise FileNotFoundError(f"No CSV files found in {DATA_DIR.resolve()}")
+
+#models = ["AIM","AutoDiff","CART","DPCART","Identity","SMOTE","TabDDPM","TVAE","ARF","BayesianNetwork","NFlow"]
+models = ["AIM",'ARF']
+
+# W&B config constants    
+
+synth_params = {
+    "epochs": 10,
+    "batch_size": 32,
+    "embedding_dim": 128,
+    "l2scale": 1e-5,
+    "loss_factor": 2,
+}
+
+MODEL_OVERRIDES = {
+    # ARF is CPU-bound; reduce compute by limiting data and iterations.
+    "ARF": {
+        "fit_max_rows": 5000,
+        "synth_params": {
+            "plugin_params": {"n_iter": 25},
+        },
+    },
+    # Keep AIM reasonably fast when CUDA is available.
+    "AIM": {
+        "synth_params": {
+            "batch_size": 128 if torch.cuda.is_available() else 32,
+        },
+    },
+}
+
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print("Note: ARF is CPU-bound in this pipeline; CUDA helps mainly deep models (e.g., CTGAN/TVAE/TabDDPM/AutoDiff/TabSyn).")
+
+for csv_path in csv_files:
+    dataset_name = csv_path.stem
+    WANDB_PROJECT = "table-synth_benchmark" + dataset_name
+    WANDB_ENTITY  = "ohsono-ucla"  
+    print(f"\n=== Processing: {dataset_name} ({csv_path.name}) ===")
+
+    df = pd.read_csv(csv_path)
+    df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
+
+    for m in models:
+        print(f"\n--- Model: {m} ---")
+        override = MODEL_OVERRIDES.get(m, {})
+        model_synth_params = {**synth_params, **override.get("synth_params", {})}
+        fit_df = df
+        fit_max_rows = override.get("fit_max_rows")
+        if fit_max_rows is not None and len(df) > fit_max_rows:
+            fit_df = df.sample(n=fit_max_rows, random_state=42).reset_index(drop=True)
+            print(f"[{dataset_name} / {m}] downsampled training rows: {len(df)} -> {len(fit_df)}")
+
+        # Create a run per dataset+model
+        run = wandb.init(
+            project=WANDB_PROJECT,
+            entity=WANDB_ENTITY,
+            name=f"{dataset_name}__{m}",
+            config={
+                "dataset": dataset_name,
+                "csv_file": csv_path.name,
+                "model": m,
+                "timeout_s": PER_MODEL_TIMEOUT,
+                **model_synth_params,
+                "n_rows_train": int(df.shape[0]),
+                "n_rows_fit": int(fit_df.shape[0]),
+                "n_cols_train": int(df.shape[1]),
+            },
+            reinit=True,  # allows multiple wandb.init() in one process
+        )
+
+        status = "success"
+        error_msg = None
+        train_s = None
+
+        try:
+            signal.alarm(PER_MODEL_TIMEOUT)
+
+            synthesizer = TableSynthesizer(m, model_synth_params)
+
+            t0 = time.perf_counter()
+
+            synthesizer.fit(fit_df, batch_size=model_synth_params.get("batch_size", 32))
+
+            train_s = time.perf_counter() - t0
+            print(f"[{dataset_name} / {m}] fit time: {train_s:.2f} s")
+
+            # Log fit time metric
+            wandb.log({"fit_time_s": train_s})
+
+            # Generate sample
+            synth_df = synthesizer.sample(n=1000, return_dataframe=True)
+
+            # Save CSV output
+            out_path = OUTPUT_DIR / f"{dataset_name}__{m}.csv"
+            synth_df.to_csv(out_path, index=False)
+            print(f"Saved synthetic data to: {out_path}")
+
+            # Log the output shape
+            wandb.log({
+                "sample_n_rows": int(synth_df.shape[0]),
+                "sample_n_cols": int(synth_df.shape[1]),
+            })
+
+            # Cancel timeout
+            signal.alarm(0)
+
+        except TimeoutException:
+            signal.alarm(0)
+            status = "timeout"
+            error_msg = f"Timed out after {PER_MODEL_TIMEOUT}s"
+            print(f"*** Skipping {dataset_name} / {m} due to timeout")
+
+        except Exception as e:
+            signal.alarm(0)
+            status = "error"
+            error_msg = f"{type(e).__name__}: {e}"
+            print(f"*** Skipping {dataset_name} / {m} due to error: {error_msg}")
+            
+        finally:
+            # Always log final status (and error message if any)
+            wandb.log({
+                "status": status,
+                "fit_time_s": train_s if train_s is not None else float("nan"),
+            })
+            if error_msg:
+                run.summary["error"] = error_msg
+            run.summary["status"] = status
+            wandb.finish()

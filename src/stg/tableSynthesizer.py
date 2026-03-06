@@ -1,7 +1,47 @@
 import logging
+import numbers
+
+import torch
+
 from .base import BaseSynthesizer
 from .identity import Identity
 from .CTGAN import CTGAN
+
+# Compatibility shim for PyTorch versions that do not provide nn.RMSNorm.
+if not hasattr(torch.nn, "RMSNorm"):
+    class _RMSNorm(torch.nn.Module):
+        def __init__(
+            self,
+            normalized_shape,
+            eps=1e-6,
+            elementwise_affine=True,
+            device=None,
+            dtype=None,
+        ):
+            super().__init__()
+            if isinstance(normalized_shape, numbers.Integral):
+                normalized_shape = (int(normalized_shape),)
+            self.normalized_shape = tuple(normalized_shape)
+            self.eps = eps
+            self.elementwise_affine = elementwise_affine
+
+            if self.elementwise_affine:
+                self.weight = torch.nn.Parameter(
+                    torch.ones(self.normalized_shape, device=device, dtype=dtype)
+                )
+            else:
+                self.register_parameter("weight", None)
+
+        def forward(self, x):
+            dims = tuple(range(-len(self.normalized_shape), 0))
+            variance = x.pow(2).mean(dim=dims, keepdim=True)
+            x = x * torch.rsqrt(variance + self.eps)
+            if self.weight is not None:
+                x = x * self.weight
+            return x
+
+    torch.nn.RMSNorm = _RMSNorm
+
 try:
     from .TabDDPM import TabDDPM
     TABDDPM_AVAILABLE = True
@@ -78,7 +118,6 @@ except ImportError:
     print("Warning: LTM-VAE not available due to missing dependencies")
 
 import numpy as np
-import torch
 
 
 DEFAULT_MODELS = {"Identity":Identity,
@@ -302,6 +341,30 @@ class TableSynthesizer:
         return synth_data
 
     
+    def evaluate(self, real_data_path, synth_data_path, column_name_to_datatype, config, save_path):
+        """Run evaluator workflow from CSV paths and return the saved report content.
+
+        Args:
+            real_data_path (str or pathlib.Path): Path to the real CSV file.
+            synth_data_path (str or pathlib.Path): Path to the synthetic CSV file.
+            column_name_to_datatype (dict): Column metadata mapping required by evaluator.
+            config (dict): Evaluator configuration.
+            save_path (str or pathlib.Path): Output directory for tables/plots.
+
+        Returns:
+            dict: Report dictionary produced by the evaluator.
+        """
+        # Lazy import keeps evaluation dependencies optional for base package users.
+        from .evaluation import evaluate as evaluate_from_csv
+
+        return evaluate_from_csv(
+            real_data_path=real_data_path,
+            synth_data_path=synth_data_path,
+            column_name_to_datatype=column_name_to_datatype,
+            config=config,
+            save_path=save_path,
+        )
+
     def load_checkpoint(self, checkpoint):
         """ Load all model parameters and hyperparameters necessary for running a synthesizer.
 
@@ -321,4 +384,5 @@ class TableSynthesizer:
             checkpoint (dict): parameter names/value pairs.
         """
         return self.model.get_state()
+
 

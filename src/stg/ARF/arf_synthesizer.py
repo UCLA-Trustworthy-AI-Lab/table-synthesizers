@@ -26,6 +26,8 @@ class ARFSynthesizer(BaseSynthesizer):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for ARFSynthesizer. "
                             "Install it with: pip install synthcity")
+        # Optional synthcity plugin args (e.g. {"n_iter": 25}) for speed/quality tradeoffs.
+        self.plugin_params = kwargs.pop("plugin_params", {})
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
@@ -46,7 +48,7 @@ class ARFSynthesizer(BaseSynthesizer):
         
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("arf")
+        self.model = Plugins().get("arf", **self.plugin_params)
         self.model.fit(loader)
         
         print(f"ARF: trained on {len(self.stored_data)} samples")
