@@ -170,9 +170,12 @@ def make_dataset(
 
         for split in ['train', 'test']:
             X_num_t, X_cat_t, y_t = tsrc.read_pure_data(data_path, split)
-            if X_num is not None:
-                if concat:
-                    X_num_t = concat_y_to_X(X_num_t, y_t)
+            if concat:
+                if X_num is None:
+                    X_num = {}
+                X_num_t = concat_y_to_X(X_num_t, y_t)
+                X_num[split] = X_num_t
+            elif X_num is not None:
                 X_num[split] = X_num_t
             if X_cat is not None:
                 X_cat[split] = X_cat_t

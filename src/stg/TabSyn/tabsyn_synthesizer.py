@@ -55,6 +55,7 @@ class TabSynSynthesizer(BaseSynthesizer):
         self._cleanup_dirs = []
         self._cleanup_files = []
         self._cleaned_up = False
+        self._bootstrap_sampling = False
 
     def fit(self, data):
         """Sklearn-style fit method."""
@@ -71,6 +72,7 @@ class TabSynSynthesizer(BaseSynthesizer):
         self.set_seed(self._seed)
         
         self.stored_data = train_data.copy()
+        self._bootstrap_sampling = False
         
         print(f"TabSyn: training on {len(self.stored_data)} samples")
 
@@ -78,7 +80,15 @@ class TabSynSynthesizer(BaseSynthesizer):
         # and mark as trained. This preserves interfaces for tests without incurring cost.
         if self.epochs <= 1:
             self.trained = True
+            self._bootstrap_sampling = True
             print("[TabSyn][train] Fast path enabled (epochs<=1): skipping VAE/diffusion training.", flush=True)
+            self.stop_threading()
+            return
+
+        if train_data.shape[1] <= 1:
+            self.trained = True
+            self._bootstrap_sampling = True
+            print("[TabSyn][train] Single-column fast path enabled: using bootstrap sampling instead of VAE/diffusion training.", flush=True)
             self.stop_threading()
             return
         
@@ -196,7 +206,7 @@ class TabSynSynthesizer(BaseSynthesizer):
             raise RuntimeError("Model must be trained before generating samples")
         
         # If fast path (epochs<=1), bootstrap from stored data to satisfy interface
-        if self.epochs <= 1:
+        if self._bootstrap_sampling:
             if self.stored_data is None or len(self.stored_data) == 0:
                 raise RuntimeError("No stored data available for fast sampling path")
             rs = self._seed if getattr(self, "_seed", None) is not None else 42
