@@ -33,11 +33,12 @@ def main(args):
 
 
     batch_size = 4096
+    num_workers = int(os.environ.get('TABSYN_NUM_WORKERS', '0'))
     train_loader = DataLoader(
         train_data,
         batch_size = batch_size,
         shuffle = True,
-        num_workers = 4,
+        num_workers = num_workers,
     )
 
     num_epochs = args.epochs

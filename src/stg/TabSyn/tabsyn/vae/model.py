@@ -12,7 +12,8 @@ class Tokenizer(nn.Module):
 
     def __init__(self, d_numerical, categories, d_token, bias):
         super().__init__()
-        if categories is None:
+        has_categories = categories is not None and len(categories) > 0
+        if not has_categories:
             d_bias = d_numerical
             self.category_offsets = None
             self.category_embeddings = None
@@ -39,7 +40,12 @@ class Tokenizer(nn.Module):
         )
 
     def forward(self, x_num, x_cat):
-        x_some = x_num if x_cat is None else x_cat
+        has_categorical_input = (
+            self.category_embeddings is not None
+            and x_cat is not None
+            and x_cat.shape[1] > 0
+        )
+        x_some = x_cat if has_categorical_input else x_num
         assert x_some is not None
         x_num = torch.cat(
             [torch.ones(len(x_some), 1, device=x_some.device)]  # [CLS]
@@ -49,7 +55,7 @@ class Tokenizer(nn.Module):
     
         x = self.weight[None] * x_num[:, :, None]
 
-        if x_cat is not None:
+        if has_categorical_input:
             x = torch.cat(
                 [x, self.category_embeddings(x_cat + self.category_offsets[None])],
                 dim=1,

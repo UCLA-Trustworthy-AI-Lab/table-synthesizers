@@ -16,8 +16,14 @@ from typing import Any, Callable, List, Dict, Type, Optional, Tuple, TypeVar, Un
 
 import __main__
 import numpy as np
-import tomli
-import tomli_w
+try:
+    import tomllib as tomli
+except ImportError:
+    import tomli
+try:
+    import tomli_w
+except ImportError:
+    tomli_w = None
 import torch
 import typing as ty
 # Apply zero workaround for TabSyn subprocess
@@ -149,6 +155,8 @@ def load_config(path: Union[Path, str]) -> Any:
 
 
 def dump_config(config: Any, path: Union[Path, str]) -> None:
+    if tomli_w is None:
+        raise ImportError("tomli_w is required to write TOML config files")
     with open(path, 'wb') as f:
         tomli_w.dump(pack_config(config), f)
     # check that there are no bugs in all these "pack/unpack" things
