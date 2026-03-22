@@ -24,6 +24,17 @@
 #   - Or use Docker container with Python 3.10
 
 # =============================================================================
+# TabPFN Unsupervised synthesizer
+# =============================================================================
+tabpfn>=2.0.0                # TabPFN foundation model
+tabpfn-extensions>=0.1.0     # Unsupervised extensions for TabPFN
+
+# =============================================================================
+# CLLM (LLM-based) synthesizer
+# =============================================================================
+openai>=1.0.0                # OpenAI API client for LLM-based generation
+
+# =============================================================================
 # Additional monitoring and logging (optional)
 # =============================================================================
 wandb>=0.15.0                # Experiment tracking and visualization

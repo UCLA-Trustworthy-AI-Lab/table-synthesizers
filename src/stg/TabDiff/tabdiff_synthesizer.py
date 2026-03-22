@@ -391,7 +391,13 @@ class TabDiffSynthesizer(BaseSynthesizer):
             offset += k
 
         # Reorder columns to match original
-        df = df[list(self.stored_data.columns)]
+        if self.stored_data is not None:
+            col_order = list(self.stored_data.columns)
+        elif hasattr(self, '_column_order') and self._column_order is not None:
+            col_order = self._column_order
+        else:
+            col_order = list(df.columns)
+        df = df[col_order]
 
         # Cast dtypes back
         for col in df.columns:
@@ -522,6 +528,7 @@ class TabDiffSynthesizer(BaseSynthesizer):
             "num_means": self._num_means,
             "num_stds": self._num_stds,
             "original_dtypes": self.original_dtypes,
+            "column_order": list(self.stored_data.columns) if self.stored_data is not None else None,
         }
         return state
 
@@ -536,6 +543,7 @@ class TabDiffSynthesizer(BaseSynthesizer):
         self._num_means = state["num_means"]
         self._num_stds = state["num_stds"]
         self.original_dtypes = state["original_dtypes"]
+        self._column_order = state.get("column_order")
         self._model = MLPDenoiser(self._x_dim, self.hidden_dims, self.time_emb_dim)
         self._model.load_state_dict(state["model_state"])
         self._model.eval()

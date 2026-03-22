@@ -20,8 +20,20 @@ from .TVAE import TVAE
 # New synthesizers that only support DataFrame input
 from .CART import CARTSynthesizer
 from .DPCART import DPCARTSynthesizer
-from .TabDiff import TabDiffSynthesizer
-from .TabPFGen import TabPFGenSynthesizer
+
+try:
+    from .TabDiff import TabDiffSynthesizer
+    TABDIFF_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABDIFF_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabDiff not available due to dependencies: %s", str(e))
+
+try:
+    from .TabPFGen import TabPFGenSynthesizer
+    TABPFGEN_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABPFGEN_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabPFGen not available due to dependencies: %s", str(e))
 try:
     from .SMOTE import SMOTESynthesizer
     SMOTE_AVAILABLE = True
@@ -98,6 +110,20 @@ except ImportError:
     LTM_VAE_AVAILABLE = False
     logging.getLogger(__name__).warning("LTM-VAE not available due to missing dependencies")
 
+try:
+    from .TabPFNUnsupervised import TabPFNUnsupervisedSynthesizer
+    TABPFN_UNSUPERVISED_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABPFN_UNSUPERVISED_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabPFNUnsupervised not available due to dependencies: %s", str(e))
+
+try:
+    from .CLLM import CLLMSynthesizer
+    CLLM_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    CLLM_AVAILABLE = False
+    logging.getLogger(__name__).warning("CLLM not available due to dependencies: %s", str(e))
+
 import numpy as np
 import torch
 
@@ -107,9 +133,13 @@ DEFAULT_MODELS = {"Identity":Identity,
                   "PATECTGAN":PATECTGAN,
                   "TVAE":TVAE,
                   "CART":CARTSynthesizer,
-                  "DPCART":DPCARTSynthesizer,
-                  "TabDiff": TabDiffSynthesizer,
-                  "TabPFGen": TabPFGenSynthesizer}
+                  "DPCART":DPCARTSynthesizer}
+
+if TABDIFF_AVAILABLE:
+    DEFAULT_MODELS["TabDiff"] = TabDiffSynthesizer
+
+if TABPFGEN_AVAILABLE:
+    DEFAULT_MODELS["TabPFGen"] = TabPFGenSynthesizer
 
 if TABDDPM_AVAILABLE:
     DEFAULT_MODELS["TabDDPM"] = TabDDPM
@@ -143,6 +173,12 @@ if TABSYN_AVAILABLE:
 
 if LTM_VAE_AVAILABLE:
     DEFAULT_MODELS["LTM_VAE"] = LTMVAESynthesizer
+
+if TABPFN_UNSUPERVISED_AVAILABLE:
+    DEFAULT_MODELS["TabPFNUnsupervised"] = TabPFNUnsupervisedSynthesizer
+
+if CLLM_AVAILABLE:
+    DEFAULT_MODELS["CLLM"] = CLLMSynthesizer
 
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
