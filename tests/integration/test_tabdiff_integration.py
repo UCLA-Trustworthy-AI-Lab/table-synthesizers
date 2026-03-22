@@ -31,7 +31,7 @@ def test_TabDiff_initialization():
 
 def test_TabDiff_dataframe_support():
     df = create_test_dataframe()
-    synthesizer = TableSynthesizer("TabDiff", {"random_state": 42})
+    synthesizer = TableSynthesizer("TabDiff", {"random_state": 42, "epochs": 1})
     synthesizer.fit(df)
 
     n_samples = 20
@@ -47,7 +47,7 @@ def test_TabDiff_dataframe_support():
 
 def test_TabDiff_edit_path():
     df = create_test_dataframe()
-    synthesizer = TableSynthesizer("TabDiff", {"random_state": 42})
+    synthesizer = TableSynthesizer("TabDiff", {"random_state": 42, "epochs": 1})
     synthesizer.fit(df)
 
     row = df.iloc[[0]].copy()

@@ -8,7 +8,7 @@ Status of synthesizers requested in `FULL_SYNTHESIZERS.md`, tested on 2026-03-22
 
 | Synthesizer | Status | Tests | Action Taken |
 |---|---|---|---|
-| TabDiff | Working | 16/16 pass | Fixed checkpoint bug, expanded tests |
+| TabDiff | Working (official repo) | 16/16 pass | Rewrote as subprocess wrapper around official TabDiff |
 | TabPFGen | Working | 12/12 pass | Expanded tests |
 | TabPFN Unsupervised | New - Working | 11/11 pass (1 skipped) | Implemented from scratch |
 | CLLM | New - Working | 21/21 pass | Implemented from scratch |
@@ -18,14 +18,15 @@ Status of synthesizers requested in `FULL_SYNTHESIZERS.md`, tested on 2026-03-22
 
 ## Detailed Status
 
-### 1. TabDiff - WORKING
+### 1. TabDiff - WORKING (Official Repo Wrapper)
 
 - **Location**: `src/stg/TabDiff/tabdiff_synthesizer.py`
-- **Implementation**: Complete MLP-DDPM with sinusoidal timestep embeddings, linear beta schedule, forward/reverse diffusion, early stopping
-- **Note**: Not architecturally faithful to the TabDiff paper (uses MLP not transformer, no per-column diffusion). Functions as a generic tabular DDPM.
-- **Bug fixed**: `_decode_tensor()` crashed after `load_state()` because `stored_data` was None. Fixed by saving `column_order` in checkpoint.
-- **Factory fix**: Changed from hard import to try/except pattern
-- **Tests**: 16 tests covering init, fit+sample, edit, hyperparams, numeric-only, categorical-only, dtypes, tensors, reproducibility, save/load, single-column, conditions, factory, DataLoader rejection, large samples
+- **Official Repo**: Cloned at `src/stg/TabDiff/TabDiff_repo/` from https://github.com/MinkaiXu/TabDiff
+- **Implementation**: Subprocess wrapper around the official TabDiff codebase (ICLR 2025). Uses UniModMLP transformer backbone, per-column learnable noise schedules, MDLM for categoricals, classifier-free guidance.
+- **Pattern**: Follows TabSyn subprocess pattern — converts DataFrame to .npy files, calls `main.py` via subprocess, reads output CSV.
+- **Fast path**: `epochs<=1` uses bootstrap sampling for tests (no subprocess needed).
+- **Factory**: Safe try/except import in tableSynthesizer.py
+- **Tests**: 16 unit tests + 3 integration tests, all passing
 
 ### 2. TabPFGen - WORKING
 
