@@ -2,7 +2,6 @@ import logging
 """CLI."""
 import numpy as np
 import torch
-from torch import optim
 from torch.nn import Linear, Module, Parameter, ReLU, Sequential
 from torch.nn.functional import cross_entropy
 from torch.optim import Adam
@@ -126,11 +125,14 @@ class TVAE(BaseSynthesizer):
         decompress_dims=(128, 128),
         l2scale=1e-5,
         batch_size=500,
-        epochs=300,
+        epochs=150,
         loss_factor=2,
+        learning_rate=1e-3,
+        patience=10,
+        min_epochs=10,
         cuda=True,
         checkpoint_interval_seconds=None,
-        **kwargs): 
+        **kwargs):
     BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwargs)
     self.embedding_dim = embedding_dim
     self.compress_dims = compress_dims
@@ -139,17 +141,18 @@ class TVAE(BaseSynthesizer):
     self.l2scale = l2scale
     self.batch_size = batch_size
     self.loss_factor = loss_factor
+    self.learning_rate = learning_rate
     self._epochs = epochs
-    
-    # Set device - use base class method
-    self.set_device()
-    if not cuda or not torch.cuda.is_available():
-        self.set_device(torch.device("cpu"))
-    else:
+    self._patience = patience
+    self._min_epochs = min_epochs
+
+    # Set device once: respect cuda flag, with auto-detection fallback
+    if cuda and torch.cuda.is_available():
         self.set_device(torch.device("cuda"))
-    # Normalize device selection once, respecting `cuda` flag
-    # desired_device = torch.device("cuda") if (cuda and torch.cuda.is_available()) else torch.device("cpu")
-    # self.set_device(desired_device)
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        self.set_device(torch.device("mps"))
+    else:
+        self.set_device(torch.device("cpu"))
         
     # Initialize transformer if data_info is provided
     if data_info is not None:
@@ -166,11 +169,19 @@ class TVAE(BaseSynthesizer):
     self.encoder.to(self._device)
     self.decoder.to(self._device)
     
+    log_interval = max(1, self._epochs // 10)
+
+    # Early stopping state
+    best_loss = float('inf')
+    epochs_no_improve = 0
+
     for i in range(self._epochs):
         self.current_epoch = i + 1
-        if i % 100 == 0:
-            logging.getLogger(__name__).info("TVAE epoch %d/%d", i, self._epochs)
-            
+        if i % log_interval == 0:
+            logging.getLogger(__name__).info("TVAE epoch %d/%d", i + 1, self._epochs)
+
+        epoch_loss = 0.0
+        n_batches = 0
         for id_, data in enumerate(train_dataloader):
             self.optimizerAE.zero_grad()
             real = data.to(self._device)
@@ -186,8 +197,25 @@ class TVAE(BaseSynthesizer):
             loss.backward()
             self.optimizerAE.step()
             self.decoder.sigma.data.clamp_(0.01, 1.0)
-            
+
             self.current_training_loss = loss.item()
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        # Early stopping on epoch-average loss
+        avg_loss = epoch_loss / max(n_batches, 1)
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if (i + 1) >= self._min_epochs and epochs_no_improve >= self._patience:
+            logging.getLogger(__name__).info(
+                'TVAE early stopping at epoch %d (patience=%d, best_loss=%.4f)',
+                i + 1, self._patience, best_loss,
+            )
+            break
 
 
   def _generate(self, n, condition=None):
@@ -206,13 +234,16 @@ class TVAE(BaseSynthesizer):
 
         steps = n // self.batch_size + 1
         data = []
-        for _ in range(steps):
-            mean = torch.zeros(self.batch_size, self.embedding_dim)
-            std = mean + 1
-            noise = torch.normal(mean=mean, std=std).to(self._device)
-            fake, sigmas = self.decoder(noise)
-            fake = torch.tanh(fake)
-            data.append(fake.detach().cpu())
+        with torch.no_grad():
+            for _ in range(steps):
+                mean = torch.zeros(self.batch_size, self.embedding_dim)
+                std = mean + 1
+                noise = torch.normal(mean=mean, std=std).to(self._device)
+                fake, sigmas = self.decoder(noise)
+                fake = torch.tanh(fake)
+                data.append(fake.cpu())
+
+        self.decoder.train()
 
         data = torch.cat(data, dim=0)
         data = data[:n]
@@ -235,8 +266,9 @@ class TVAE(BaseSynthesizer):
         self.decoder = Decoder(self.embedding_dim, self.decompress_dims, data_dim).to(self._device)
         self.optimizerAE = Adam(
             list(self.encoder.parameters()) + list(self.decoder.parameters()),
+            lr=self.learning_rate,
             weight_decay=self.l2scale)
-        
+
         self.model_loaded=True
         
   def get_state(self):
@@ -250,8 +282,12 @@ class TVAE(BaseSynthesizer):
       return state
         
   def load_state(self, checkpoint):
-      """Load state from a file path/object"""
-      state = torch.load(checkpoint)
+      """Load state from a file path or dictionary"""
+      # Handle both file paths and pre-loaded dictionaries
+      if isinstance(checkpoint, dict):
+          state = checkpoint
+      else:
+          state = torch.load(checkpoint, weights_only=False)
       
       self._transformer = state['transformer']
       data_dim = self._transformer.output_width
@@ -259,6 +295,7 @@ class TVAE(BaseSynthesizer):
       self.decoder = Decoder(self.embedding_dim, self.decompress_dims, data_dim).to(self._device)
       self.optimizerAE = Adam(
             list(self.encoder.parameters()) + list(self.decoder.parameters()),
+            lr=self.learning_rate,
             weight_decay=self.l2scale)
       
       self.encoder.load_state_dict(state['encoder'])
@@ -266,16 +303,3 @@ class TVAE(BaseSynthesizer):
       self.optimizerAE.load_state_dict(state['optimizerAE'])
 
       self.model_loaded = True
-
-  def fit(self, data):
-      """Fit method for sklearn-style interface."""
-      self.train(data)
-
-  def sample(self, n_samples, return_dataframe=False):
-      """Sample method for sklearn-style interface."""
-      synth_data = self.generate(n_samples)
-
-      if return_dataframe and hasattr(self, 'decode_samples'):
-          return self.decode_samples(synth_data)
-
-      return synth_data

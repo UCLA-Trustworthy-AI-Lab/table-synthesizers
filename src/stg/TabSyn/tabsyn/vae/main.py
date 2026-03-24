@@ -49,8 +49,9 @@ NUM_LAYERS = 2
 def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
     ce_loss_fn = nn.CrossEntropyLoss()
     mse_loss = (X_num - Recon_X_num).pow(2).mean()
-    ce_loss = 0
-    acc = 0
+    zero = mu_z.new_zeros(())
+    ce_loss = zero
+    acc = zero
     total_num = 0
 
     for idx, x_cat in enumerate(Recon_X_cat):
@@ -61,8 +62,8 @@ def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
         total_num += x_hat.shape[0]
 
     if len(Recon_X_cat) < 1:
-        ce_loss = torch.tensor(0)
-        acc = torch.tensor(0)
+        ce_loss = zero
+        acc = zero
     else:
         ce_loss /= (idx + 1)
         acc /= total_num
@@ -93,9 +94,8 @@ def main(args):
         info = json.load(f)
 
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    ckpt_dir = f'{curr_dir}/ckpt/{dataname}' 
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(ckpt_dir)
+    ckpt_dir = os.path.join('data', 'TabSyn', 'ckpt', dataname)
+    os.makedirs(ckpt_dir, exist_ok=True)
 
     model_save_path = f'{ckpt_dir}/model.pt'
     encoder_save_path = f'{ckpt_dir}/encoder.pt'
@@ -119,11 +119,12 @@ def main(args):
     X_test_cat = X_test_cat.to(device)
 
     batch_size = 4096
+    num_workers = int(os.environ.get('TABSYN_NUM_WORKERS', '0'))
     train_loader = DataLoader(
         train_data,
         batch_size = batch_size,
         shuffle = True,
-        num_workers = 4,
+        num_workers = num_workers,
     )
 
     model = Model_VAE(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR, bias = True)

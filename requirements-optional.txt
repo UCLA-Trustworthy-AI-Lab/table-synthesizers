@@ -1,0 +1,50 @@
+# Optional dependencies for specific synthesizers
+# These dependencies may have compatibility issues on certain platforms
+
+# =============================================================================
+# Synthcity-based synthesizers (GREAT, NFlow, ARF, BayesianNetwork)
+# =============================================================================
+# NOTE: synthcity is now included in requirements.txt as a standard dependency.
+# Previously optional due to Python 3.12 + ARM64 Linux compatibility issues
+# with torchtext dependency - these have been resolved.
+
+# =============================================================================
+# TabSyn synthesizer
+# =============================================================================
+# NOTE: Python 3.12 compatibility issues with subprocess imports
+# Error: ImportError: attempted relative import beyond top-level package
+#
+# Recommendation: Use alternative GPU models instead:
+#   - CTGAN: Best balance of speed and quality (15-30x speedup)
+#   - TabDDPM: Highest quality (20-40x speedup)
+#   - TVAE: Fastest training (10-20x speedup)
+#
+# If TabSyn is required:
+#   - Use Python 3.10 or 3.11 instead of 3.12
+#   - Or use Docker container with Python 3.10
+
+# =============================================================================
+# TabPFN Unsupervised synthesizer
+# =============================================================================
+tabpfn>=2.0.0                # TabPFN foundation model
+tabpfn-extensions>=0.1.0     # Unsupervised extensions for TabPFN
+
+# =============================================================================
+# CLLM (LLM-based) synthesizer
+# =============================================================================
+openai>=1.0.0                # OpenAI API client for LLM-based generation
+
+# =============================================================================
+# Additional monitoring and logging (optional)
+# =============================================================================
+wandb>=0.15.0                # Experiment tracking and visualization
+psutil>=5.9.0                # System metrics for monitoring
+pynvml>=11.5.0               # Detailed GPU metrics (NVIDIA only)
+
+# =============================================================================
+# Development tools (optional)
+# =============================================================================
+black>=23.0.0                # Code formatting
+isort>=5.12.0                # Import sorting
+mypy>=1.0.0                  # Type checking
+pytest-cov>=4.0.0            # Test coverage reporting

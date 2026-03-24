@@ -20,6 +20,20 @@ from .TVAE import TVAE
 # New synthesizers that only support DataFrame input
 from .CART import CARTSynthesizer
 from .DPCART import DPCARTSynthesizer
+
+try:
+    from .TabDiff import TabDiffSynthesizer
+    TABDIFF_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABDIFF_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabDiff not available due to dependencies: %s", str(e))
+
+try:
+    from .TabPFGen import TabPFGenSynthesizer
+    TABPFGEN_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABPFGEN_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabPFGen not available due to dependencies: %s", str(e))
 try:
     from .SMOTE import SMOTESynthesizer
     SMOTE_AVAILABLE = True
@@ -27,17 +41,36 @@ except ImportError:
     SMOTE_AVAILABLE = False
     logging.getLogger(__name__).warning("SMOTE not available due to missing dependencies (imbalanced-learn)")
 
+try:
+    from .GaussianCopula import GaussianCopulaSynthesizer
+    GAUSSIANCOPULA_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    GAUSSIANCOPULA_AVAILABLE = False
+    logging.getLogger(__name__).warning("GaussianCopula not available due to dependencies: %s", str(e))
+
 # New synthesizers from Gen_MIA experiments
 try:
     from .BayesianNetwork import BayesianNetworkSynthesizer
-    BAYESIANNETWORK_AVAILABLE = True
+    from .BayesianNetwork.bayesian_network_synthesizer import SYNTHCITY_AVAILABLE as _BN_SYNTHCITY_OK
+    BAYESIANNETWORK_AVAILABLE = _BN_SYNTHCITY_OK
+    if not BAYESIANNETWORK_AVAILABLE:
+        logging.getLogger(__name__).warning(
+            "BayesianNetwork not available: synthcity deps missing or pgmpy incompatible "
+            "(requires pgmpy<1.0.0)"
+        )
 except (ImportError, AttributeError) as e:
     BAYESIANNETWORK_AVAILABLE = False
     logging.getLogger(__name__).warning("BayesianNetwork not available due to dependencies: %s", str(e))
 
 try:
     from .GREAT import GREATSynthesizer
-    GREAT_AVAILABLE = True
+    from .GREAT.great_synthesizer import SYNTHCITY_AVAILABLE as _GREAT_SYNTHCITY_OK
+    GREAT_AVAILABLE = _GREAT_SYNTHCITY_OK
+    if not GREAT_AVAILABLE:
+        logging.getLogger(__name__).warning(
+            "GREAT not available: be_great or datasets dependency broken "
+            "(requires datasets>=3.1.0 for pyarrow 14+ compatibility)"
+        )
 except (ImportError, AttributeError) as e:
     GREAT_AVAILABLE = False
     logging.getLogger(__name__).warning("GREAT not available due to dependencies: %s", str(e))
@@ -75,7 +108,21 @@ try:
     LTM_VAE_AVAILABLE = True
 except ImportError:
     LTM_VAE_AVAILABLE = False
-    print("Warning: LTM-VAE not available due to missing dependencies")
+    logging.getLogger(__name__).warning("LTM-VAE not available due to missing dependencies")
+
+try:
+    from .TabPFNUnsupervised import TabPFNUnsupervisedSynthesizer
+    TABPFN_UNSUPERVISED_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TABPFN_UNSUPERVISED_AVAILABLE = False
+    logging.getLogger(__name__).warning("TabPFNUnsupervised not available due to dependencies: %s", str(e))
+
+try:
+    from .CLLM import CLLMSynthesizer
+    CLLM_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    CLLM_AVAILABLE = False
+    logging.getLogger(__name__).warning("CLLM not available due to dependencies: %s", str(e))
 
 import numpy as np
 import torch
@@ -88,7 +135,13 @@ DEFAULT_MODELS = {"Identity":Identity,
                   "CART":CARTSynthesizer,
                   "DPCART":DPCARTSynthesizer}
 
-if 'TABDDPM_AVAILABLE' in globals() and TABDDPM_AVAILABLE:
+if TABDIFF_AVAILABLE:
+    DEFAULT_MODELS["TabDiff"] = TabDiffSynthesizer
+
+if TABPFGEN_AVAILABLE:
+    DEFAULT_MODELS["TabPFGen"] = TabPFGenSynthesizer
+
+if TABDDPM_AVAILABLE:
     DEFAULT_MODELS["TabDDPM"] = TabDDPM
 
 if AIM_AVAILABLE:
@@ -96,6 +149,9 @@ if AIM_AVAILABLE:
 
 if SMOTE_AVAILABLE:
     DEFAULT_MODELS["SMOTE"] = SMOTESynthesizer
+
+if GAUSSIANCOPULA_AVAILABLE:
+    DEFAULT_MODELS["GaussianCopula"] = GaussianCopulaSynthesizer
 
 if BAYESIANNETWORK_AVAILABLE:
     DEFAULT_MODELS["BayesianNetwork"] = BayesianNetworkSynthesizer
@@ -117,6 +173,12 @@ if TABSYN_AVAILABLE:
 
 if LTM_VAE_AVAILABLE:
     DEFAULT_MODELS["LTM_VAE"] = LTMVAESynthesizer
+
+if TABPFN_UNSUPERVISED_AVAILABLE:
+    DEFAULT_MODELS["TabPFNUnsupervised"] = TabPFNUnsupervisedSynthesizer
+
+if CLLM_AVAILABLE:
+    DEFAULT_MODELS["CLLM"] = CLLMSynthesizer
 
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
@@ -280,6 +342,36 @@ class TableSynthesizer:
             data,
             batch_size=batch_size         
         )
+
+    def train_from_csv(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+        """
+        Train synthesizer directly from a CSV file.
+        
+        Args:
+            file_path: Path to the CSV file
+            optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+            batch_size: Batch size for DataLoader creation
+        
+        Raises:
+            ImportError: If DataLoader is not available
+            FileNotFoundError: If the file does not exist
+        """
+        self.model.train_from_csv(file_path, optimize_memory=optimize_memory, batch_size=batch_size)
+
+    def train_from_parquet(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
+        """
+        Train synthesizer directly from a Parquet file.
+        
+        Args:
+            file_path: Path to the Parquet file
+            optimize_memory: If True, apply memory optimization (downcasting, categorical conversion)
+            batch_size: Batch size for DataLoader creation
+        
+        Raises:
+            ImportError: If DataLoader is not available
+            FileNotFoundError: If the file does not exist
+        """
+        self.model.train_from_parquet(file_path, optimize_memory=optimize_memory, batch_size=batch_size)
 
     def sample(self, n, condition=None, return_dataframe=False):
         """Generate synthetic samples

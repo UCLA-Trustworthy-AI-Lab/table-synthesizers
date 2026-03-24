@@ -75,6 +75,10 @@ class SMOTESynthesizer(BaseSynthesizer):
             print(f"Removing {len(rare_categories)} rare categories with < {min_samples_needed} samples")
             data_for_smote = data_for_smote[~data_for_smote[self.target_column].isin(rare_categories)]
         
+        # Detect if target is continuous (regression) or categorical (classification)
+        target_values = data_for_smote[self.target_column]
+        is_regression = pd.api.types.is_numeric_dtype(target_values) and len(target_values.unique()) > 10
+
         # Use the sample_smote function with synthetic mode
         synthetic_df = sample_smote(
             df=data_for_smote,
@@ -83,9 +87,29 @@ class SMOTESynthesizer(BaseSynthesizer):
             eval_type="synthetic",  # Only return synthetic samples
             k_neighbors=self.k_neighbors,
             frac_samples=self.frac_samples,
+            is_regression=is_regression,
             seed=self.random_state if self.random_state is not None else 0,
             n_samples=n_samples
         )
+
+        # Some SMOTE paths can return fewer rows than requested (e.g., class
+        # constraints after filtering). Normalize to exact requested size.
+        if len(synthetic_df) > n_samples:
+            synthetic_df = synthetic_df.head(n_samples).reset_index(drop=True)
+        elif len(synthetic_df) < n_samples:
+            if len(synthetic_df) == 0:
+                synthetic_df = data_for_smote.sample(
+                    n=n_samples,
+                    replace=True,
+                    random_state=self.random_state if self.random_state is not None else 0,
+                ).reset_index(drop=True)
+            else:
+                extra = synthetic_df.sample(
+                    n=n_samples - len(synthetic_df),
+                    replace=True,
+                    random_state=self.random_state if self.random_state is not None else 0,
+                )
+                synthetic_df = pd.concat([synthetic_df, extra], ignore_index=True)
         
         return synthetic_df
     

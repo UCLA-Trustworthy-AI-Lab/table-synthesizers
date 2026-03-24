@@ -8,20 +8,34 @@ import numpy as np
 import torch
 
 
-def improve_reproducibility(seed):
+def improve_reproducibility(seed, mode = 'default'):
     """
     Improve reproducibility by setting seeds for various random number generators.
     This is a workaround for zero.improve_reproducibility()
+
+    Args:
+        seed: Random seed value
+        mode: 'default' (all), 'np' (numpy only), 'torch' (pytorch only), 'cuda' (cuda only)
     """
-    python_random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    # Set deterministic algorithms for PyTorch (optional, may impact performance)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    if mode == 'default':
+        # Set all seeds for maximum reproducibility
+        python_random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+        # Set deterministic algorithms for PyTorch (optional, may impact performance)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    elif mode == 'np':
+        np.random.seed(seed)
+    elif mode == 'torch':
+        torch.manual_seed(seed)
+    elif mode == 'cuda':
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
 
 
 class Random:

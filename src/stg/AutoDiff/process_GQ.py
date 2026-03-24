@@ -45,13 +45,17 @@ class LabelEncoder(object):
     def fit(self, x):
         self.mapping = {v: i for i, v in enumerate(set(x))}
         return self
+
+    def transform(self, x):
+        return np.array(list(map(self.mapping.__getitem__, x)))
     
     def fit_bin_int(self, x):
         self.bin_int_encoder = x
         return self
     
     def fit_transform(self, x):
-        return np.array(list(map(self.mapping.__getitem__, x)))
+        self.fit(x)
+        return self.transform(x)
 
     def fit_int_transform(self, x):
         return np.array(x)

@@ -16,16 +16,49 @@ except ImportError:
 class NFlowSynthesizer(BaseSynthesizer):
     """
     NFlow (Normalizing Flow) synthesizer for tabular data generation.
-    
+
     This synthesizer uses synthcity's Normalizing Flow implementation which learns
     invertible transformations to model the data distribution.
     Only supports DataFrame input (not DataLoader).
+
+    Synthcity plugin parameters (passed via config dict):
+        n_iter (int): Training iterations. Default: 1000.
+        n_layers_hidden (int): Hidden layers. Default: 1.
+        n_units_hidden (int): Units per hidden layer. Default: 100.
+        batch_size (int): Training batch size. Default: 200.
+        num_transform_blocks (int): Transform blocks. Default: 1.
+        dropout (float): Dropout rate. Default: 0.1.
+        batch_norm (bool): Use batch normalization. Default: False.
+        num_bins (int): Spline bins. Default: 8.
+        lr (float): Learning rate. Default: 0.001.
+        encoder_max_clusters (int): Encoding clusters. Default: 10.
+        random_state (int): Random seed. Default: 0.
+        sampling_patience (int): Max retries for schema-valid sampling. Default: 500.
+        device (str): Device for training. Default: "cpu".
+        patience (int): Early stopping patience. Default: 5.
     """
-    
+
+    # Parameters that synthcity's NFlow plugin accepts
+    _SYNTHCITY_PARAMS = {
+        'n_iter', 'n_layers_hidden', 'n_units_hidden', 'batch_size',
+        'num_transform_blocks', 'dropout', 'batch_norm', 'num_bins',
+        'tail_bound', 'lr', 'apply_unconditional_transform',
+        'base_distribution', 'linear_transform_type', 'base_transform_type',
+        'encoder_max_clusters', 'random_state', 'sampling_patience',
+        'device', 'patience', 'n_iter_min', 'n_iter_print', 'patience_metric',
+    }
+
     def __init__(self, data_info=None, **kwargs):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for NFlowSynthesizer. "
                             "Install it with: pip install synthcity")
+
+        # Extract synthcity-specific params before passing to base class
+        self._synthcity_kwargs = {}
+        for key in list(kwargs.keys()):
+            if key in self._SYNTHCITY_PARAMS:
+                self._synthcity_kwargs[key] = kwargs.pop(key)
+
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
@@ -36,21 +69,42 @@ class NFlowSynthesizer(BaseSynthesizer):
 
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("NFlowSynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         self.stored_data = train_data.copy()
-        
+
+        # Build synthcity plugin kwargs
+        plugin_kwargs = dict(self._synthcity_kwargs)
+
+        # Map 'epochs' to 'n_iter' for consistency with other synthesizers
+        if hasattr(self, '_epochs') and self._epochs is not None and 'n_iter' not in plugin_kwargs:
+            plugin_kwargs['n_iter'] = self._epochs
+
+        # Auto-detect device if not explicitly set by user (CUDA → CPU fallback)
+        # Synthcity NFlow accepts "cuda" or "cpu" only (not "mps")
+        if 'device' not in plugin_kwargs:
+            from ..gpu_utils import detect_best_device
+            detected = detect_best_device()
+            plugin_kwargs['device'] = "cuda" if detected.type == "cuda" else "cpu"
+            logger.info("NFlow: auto-detected device: %s", plugin_kwargs['device'])
+
+        if plugin_kwargs:
+            logger.info("NFlow: using plugin params: %s", plugin_kwargs)
+
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("nflow")
+        self.model = Plugins().get("nflow", **plugin_kwargs)
         self.model.fit(loader)
-        
-        print(f"NFlow: trained on {len(self.stored_data)} samples")
-        
+
+        logger.info("NFlow: trained on %d samples", len(self.stored_data))
+
         self.stop_threading()
     
     def _train(self, train_data):
@@ -84,15 +138,33 @@ class NFlowSynthesizer(BaseSynthesizer):
             return torch.tensor(encoded_df.values, dtype=torch.float32)
     
     def _encode_for_tensor(self, df):
-        """Encode DataFrame for tensor conversion."""
+        """Encode DataFrame for tensor conversion.
+
+        Normalises every column to float64 so that df.values returns a
+        homogeneous numpy array that torch can consume.  In pandas 2.0+ a
+        DataFrame with mixed numeric dtypes (bool + int64 + float64) can
+        return an object-dtype array from .values, which torch rejects.
+
+        Rules applied per column:
+          - pd.Categorical → cast to object first (avoids code-vs-label mismatch)
+          - non-numeric (object/string/bool-object) → label-encode → float64
+          - numeric (bool, int*, float*) → cast to float64 directly
+        """
         encoded_df = df.copy()
-        
+
         for col in df.columns:
-            if not pd.api.types.is_numeric_dtype(df[col]):
-                # Encode categorical column to integers
-                categories = pd.Categorical(df[col])
-                encoded_df[col] = categories.codes
-        
+            series = encoded_df[col]
+            # Unbox pandas Categorical before any further processing
+            if isinstance(series.dtype, pd.CategoricalDtype):
+                encoded_df[col] = series.astype(object)
+                series = encoded_df[col]
+            if not pd.api.types.is_numeric_dtype(series):
+                encoded_df[col] = pd.Categorical(series).codes.astype(np.float64)
+            else:
+                # Homogenise all numeric dtypes (bool, int32, int64, etc.) to
+                # float64 so that df.values never returns an object array.
+                encoded_df[col] = series.astype(np.float64)
+
         return encoded_df
     
     def generate(self, n_samples, condition=None):

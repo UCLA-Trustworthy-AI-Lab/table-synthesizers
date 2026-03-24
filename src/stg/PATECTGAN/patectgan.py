@@ -327,11 +327,16 @@ class PATECTGAN(BaseSynthesizer):
             )
 
         iteration = 0
+        # Keep privacy-target stopping, but also bound runtime by configured
+        # epochs to avoid unbounded loops when epsilon does not progress.
+        max_iterations = max(int(self._epochs), 1) if self._epochs is not None else None
 
         if self.delta is None:
             self.delta = 1 / (len(train_dataloader.dataset) * np.sqrt(len(train_dataloader.dataset)))
 
-        while eps.item() < self.epsilon:
+        while eps.item() < self.epsilon and (
+            max_iterations is None or iteration < max_iterations
+        ):
             iteration += 1
 
             eps = min((alphas - math.log(self.delta)) / l_list)
@@ -532,6 +537,13 @@ class PATECTGAN(BaseSynthesizer):
                     "eps: %f \t G: %f \t D: %f",
                     float(eps), float(loss_g.detach().cpu()), float(loss_s.detach().cpu())
                 )
+        if max_iterations is not None and iteration >= max_iterations and eps.item() < self.epsilon:
+            self._logger.info(
+                "PATECTGAN stopped at max iterations=%d before reaching epsilon target (%s < %s)",
+                max_iterations,
+                float(eps),
+                float(self.epsilon),
+            )
         #self.stop_threading()
 
     def w_loss(self, output, labels):
@@ -574,20 +586,6 @@ class PATECTGAN(BaseSynthesizer):
 
         return data[:n]
 
-    def fit(self, data, *ignore, transformer=None, categorical_columns=[], ordinal_columns=[], continuous_columns=[], preprocessor_eps=0.0, nullable=False):
-        self.train(data)
-
-    def sample(self, n_samples, return_dataframe=False):
-        samples = self.generate(n_samples)
-        if return_dataframe:
-            # PATECTGAN doesn't have proper DataFrame decoding yet
-            # Return tensor for now - this is a known limitation
-            print("Warning: PATECTGAN DataFrame output not fully implemented, returning tensor")
-            return samples
-        else:
-            return samples
-
-            
     def get_state(self):
         state = {
           'cond_generator':self.cond_generator,
@@ -608,7 +606,7 @@ class PATECTGAN(BaseSynthesizer):
         return state
           
     def load_state(self, checkpoint):
-        state = torch.load(checkpoint)
+        state = torch.load(checkpoint, weights_only=False)
         
         self._transformer = state['transformer']
         data_dim = self._transformer.output_width
@@ -660,12 +658,6 @@ class PATECTGAN(BaseSynthesizer):
             self.optimizer_t[i].load_state_dict(state['optimizer_t_state'][i]) 
         
         self.model_loaded = True
-
-
-
-
-        
-
 
     @staticmethod
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):

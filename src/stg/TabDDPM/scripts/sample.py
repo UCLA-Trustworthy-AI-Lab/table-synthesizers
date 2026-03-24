@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import sys
 # Apply zero workaround
-import stg.zero_workaround as zero
+from stg import zero_workaround as zero
 sys.modules['zero'] = zero
 from ..tab_ddpm.gaussian_multinomial_diffsuion import GaussianMultinomialDiffusion
 from .utils_train import get_model
@@ -168,6 +168,8 @@ def sample(
         #np.save(os.path.join(parent_dir, 'X_num_unnorm'), X_gen[:, :num_numerical_features])
         #X_num_ = D.num_transform.inverse_transform(X_gen[:, :num_numerical_features])
         X_num = X_num_[:, :num_numerical_features]
+    else:
+        X_num = np.empty((X_gen.shape[0], 0))
 
         #X_num_real = np.load(os.path.join(real_data_path, "X_num_train.npy"), allow_pickle=True)
         print("data_info['transform_info'].keys()")

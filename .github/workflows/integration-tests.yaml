@@ -2,11 +2,6 @@ name: "▶ Integration Tests"
 
 on:
   workflow_dispatch:
-    inputs:
-      include_edge_cases:
-        description: 'Also run full edge-case tests'
-        type: boolean
-        default: false
 
 concurrency:
   group: integration-tests-${{ github.ref }}
@@ -16,44 +11,25 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Setup Sandbox Datasets
+        run: python tests/integration/setup_sandbox_datasets.py
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          python-version: '3.11'
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - name: Install dependencies
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull or build base image
         run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system pytest
-          uv pip install --system -e .
-      - name: Run integration tests
+          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker buildx build -f docker/Dockerfile.base \
+            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+      - name: Run integration tests in Docker
         run: |
-          pytest tests/integration/ \
-            --ignore-glob="**/test_edge_cases.py" \
-            -v --tb=short
-
-  edge-case-tests:
-    name: Edge Case Tests
-    runs-on: ubuntu-latest
-    needs: integration-tests
-    if: inputs.include_edge_cases == true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "requirements*.txt"
-      - name: Install dependencies
-        run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system pytest
-          uv pip install --system -e .
-      - name: Run edge case tests
-        run: pytest tests/integration/test_edge_cases.py -v --tb=short
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+            bash -c "pytest tests/integration/ --ignore-glob='**/test_edge_cases.py' -v --tb=short"

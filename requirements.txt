@@ -1,51 +1,35 @@
-# Core dependencies - CRITICAL: Use exact versions for compatibility
-torch==2.2.2                     # Upgraded for native RMSNorm support (required for synthcity)
-torchvision==0.17.2              # Compatible with PyTorch 2.2.2
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn==1.7.2              # Upgraded for TabSyn compatibility
-scipy==1.11.4                    # Downgraded for TabSyn _lazywhere compatibility
+# =============================================================================
+# Base Requirements - Core packages for all models
+# =============================================================================
+# Install: pip install -r requirements.txt
+#
+# This provides: Identity, CART, DPCART, SMOTE, AIM (CPU models)
+# For GPU models: pip install -r requirements-gpu.txt
+# For CPU torch:  pip install -r requirements-cpu.txt
+# For synthcity:  pip install -r requirements-synthcity.txt
+# =============================================================================
 
-# Essential dependencies for most synthesizers
+# Data handling
+pandas>=2.2.3,<3.0.0
+numpy>=1.26.4,<2.0.0
+
+# Machine learning
+scikit-learn>=1.6.1
+scipy>=1.11.3
+imbalanced-learn>=0.14.1
+
+# Encoding
 category_encoders>=2.6.0
-tomli>=2.0.0
-tomli_w>=1.2.0                   # Required for TabSyn
-imbalanced-learn==0.14.0         # Upgraded for sklearn 1.7.2 compatibility
 
-# For TabDDPM and TabSyn synthesizers - COMMENTED OUT: Use zero_workaround.py instead
-# zero_workaround.py provides 100% functional replacement with subprocess compatibility
-#libzero==0.0.8
+# Utilities
+tqdm>=4.66.4
+tomli>=2.0.1
+tomli_w>=1.2.0
+icecream>=2.1.0
+seaborn>=0.13.0
 
-# Development and testing
-pytest>=7.0.0
-tqdm>=4.60.0
+# SDV synthesizers
+sdv>=1.34.0
 
-# LTM (Latent Table Model) dependencies
-transformers>=4.0.0
-datasets>=2.0.0
-accelerate>=0.20.0
-ema-pytorch>=0.7.0
-
-# Synthcity models (BayesianNetwork, GREAT, ARF, NFlow) - NOW WORKING ✅
-# Fixed compatibility issues with PyTorch 2.8.0 upgrade
-synthcity==0.2.12                # External package for advanced synthesizers
-
-seaborn
-
-# Optional: For AIM synthesizer (requires complex private-pgm setup)
-# Currently disabled due to dependency complexity
-# opendp==0.7.0
-# autodp==0.2
-# private-pgm @ git+https://github.com/ryan112358/private-pgm.git
-
-# Note for Apple Silicon (M1/M2) users:
-# Use conda to install core packages for better ARM64 compatibility:
-# conda install pytorch numpy pandas scikit-learn -c pytorch
-# Then use pip for the remaining dependencies
-
-# Conda Environment Setup for LTM Testing:
-# 1. Activate your conda environment: conda activate <your-env-name>
-# 2. Install LTM dependencies: pip install transformers datasets accelerate ema-pytorch
-# 3. Set Python path: export PYTHONPATH="$PWD/src/stg/LTM-VAE/src:$PYTHONPATH"
-# 4. Run tests: pytest test_ltm_integration_basic.py -v
-# Or use the convenience script: ./run_tests_conda.sh
+# Testing
+pytest>=8.2.2

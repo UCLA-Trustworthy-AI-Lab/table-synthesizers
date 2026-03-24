@@ -1,0 +1,6 @@
+{
+    "model_type": "cpu",
+    "description": "Decision tree synthesizer",
+    "speedup": "1x",
+    "quality": "Medium"
+}

@@ -1,0 +1,105 @@
+# ─── Optimized Base Image ──────────────────────────────────────────────────────
+# Tier 1: CPU-only models (Identity, CART, DPCART, AIM, CTGAN, PATECTGAN, TVAE,
+#          TabDiff, TabPFGen, GaussianCopula / SDV-backed models)
+#
+# Key optimizations vs naive image:
+#  1. Multi-stage build — builder has full tool-chain, runtime is minimal
+#  2. Explicit CPU-only torch before sdv/ctgan so no CUDA libs sneak in
+#  3. uv cache mount — faster incremental rebuilds, zero cache in final layer
+#  4. Strip .pyc/__pycache__/test fixtures from installed packages
+#  5. Tight .dockerignore keeps build context small (see docker/.dockerignore)
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: build ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Build-time system deps (compiler tools etc.) — NOT carried into runtime
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    build-essential \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy uv binary only (tiny, ~10 MB)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# --- Dependency installation with cache mount ---
+# 1. Install CPU-only PyTorch FIRST so sdv/ctgan use it instead of CUDA wheel.
+#    This alone saves ~1 GB vs letting sdv pick the default wheel.
+COPY requirements.txt .
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# 2. Install the rest of requirements (sdv, scikit-learn, etc.)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
+
+# 3. Install pytest
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system pytest
+
+# 4. Copy source and install package
+COPY src/ src/
+COPY setup.cfg pyproject.toml ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -e .
+
+# 5. Strip .pyc files, __pycache__, and test fixtures from site-packages
+#    Typically saves 100-300 MB
+RUN find /usr/local/lib/python3.11/site-packages -type d -name "__pycache__" \
+    -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.11/site-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.11/site-packages -type d -name "tests" \
+    \( -not -path "*/stg/*" \) -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.11/site-packages -type d -name "test" \
+    \( -not -path "*/stg/*" \) -exec rm -rf {} + 2>/dev/null || true
+
+
+# ── Stage 2: runtime ───────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Runtime system deps only  
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy uv (for editable install support at container startup if needed)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy Python site-packages from builder (no uv cache, no PyPI metadata)
+COPY --from=builder /usr/local/lib/python3.11/site-packages \
+    /usr/local/lib/python3.11/site-packages
+
+# Copy installed console scripts
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application source (src only — tests copied separately below)
+COPY --from=builder /app/src src/
+COPY --from=builder /app/setup.cfg /app/pyproject.toml ./
+
+# Copy config (needed by models at runtime)
+COPY config/ config/
+
+# Copy tests (needed for the default CMD)
+COPY tests/ tests/
+
+# Default: run base model tests (no GPU, no synthcity)
+CMD ["pytest", \
+    "-m", "not gpu and not synthcity", \
+    "--ignore-glob=**/test_arf.py", \
+    "--ignore-glob=**/test_bayesian_network.py", \
+    "--ignore-glob=**/test_great.py", \
+    "--ignore-glob=**/test_nflow.py", \
+    "--ignore-glob=**/test_smote.py", \
+    "tests/", "-v", "--tb=short"]

@@ -1,0 +1,28 @@
+# =============================================================================
+# GPU Requirements - CUDA SM 12.1 (Blackwell) compatible
+# =============================================================================
+# Install:
+#   pip install -r requirements.txt
+#   pip install -r requirements-gpu.txt
+#
+# This provides: CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE
+# Tested on: NVIDIA GB10 (SM 12.1), CUDA 13.0+, Python 3.11
+#
+# NOTE: Install torch with CUDA 13.0 support FIRST:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+#
+# For older GPUs (Ampere, Hopper):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# =============================================================================
+
+# PyTorch with CUDA support (install via --index-url, not from PyPI)
+# pip install torch>=2.7.0 torchvision>=0.22.0 --index-url https://download.pytorch.org/whl/cu130
+torch>=2.7.0
+torchvision>=0.22.0
+
+# LTM (Latent Table Model) dependencies
+transformers>=4.0.0
+datasets>=2.0.0
+accelerate>=0.20.0
+ema-pytorch>=0.7.0
+boto3>=1.26.0

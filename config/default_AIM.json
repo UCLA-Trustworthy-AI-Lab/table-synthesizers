@@ -1,0 +1,6 @@
+{
+    "model_type": "cpu",
+    "description": "Adaptive and Iterative Mechanism",
+    "speedup": "1x",
+    "quality": "Good"
+}

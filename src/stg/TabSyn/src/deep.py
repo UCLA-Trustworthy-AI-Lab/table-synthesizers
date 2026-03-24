@@ -15,10 +15,16 @@ try:
     import os
     # Add the parent stg directory to path
     parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-    import stg.zero_workaround as zero
-    sys.modules['zero'] = zero
+    zero_path = os.path.join(parent_dir, 'zero_workaround.py')
+    if os.path.exists(zero_path):
+        # Import zero_workaround directly as a module to avoid circular imports
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("zero_workaround", zero_path)
+        zero = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(zero)
+        sys.modules['zero'] = zero
+    else:
+        raise ImportError(f"Could not find zero_workaround.py at {zero_path}")
 except ImportError:
     # Fallback to regular zero import if workaround not available
     import zero

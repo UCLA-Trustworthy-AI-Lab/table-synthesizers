@@ -78,7 +78,7 @@ def preprocess(dataset_path, task_type='binclass', inverse=False, cat_encoding=N
 
         if X_cat is not None:
             X_train_cat, X_test_cat = X_cat.get('train'), X_cat.get('test')
-            categories = tsrc.get_category_sizes(X_train_cat) if X_train_cat is not None else []
+            categories = tsrc.get_category_sizes(X_train_cat) if X_train_cat is not None and X_train_cat.size > 0 else []
         X_cat = (X_train_cat, X_test_cat)
 
         # Handle inverse transformation if needed
@@ -143,10 +143,19 @@ def make_dataset(
             X_num_t, X_cat_t, y_t = tsrc.read_pure_data(data_path, split)
             if X_num is not None:
                 X_num[split] = X_num_t
-            if X_cat is not None:
-                if concat:
-                    X_cat_t = concat_y_to_X(X_cat_t, y_t)
-                X_cat[split] = X_cat_t  
+
+            # For classification with concat=True, always process X_cat (even if originally None)
+            # to include the target
+            if concat:
+                # Ensure X_cat dict exists if we need to concatenate target
+                if X_cat is None:
+                    X_cat = {}
+                X_cat_t = concat_y_to_X(X_cat_t, y_t)
+                X_cat[split] = X_cat_t
+            elif X_cat is not None:
+                # If not concatenating but X_cat exists, just store it
+                X_cat[split] = X_cat_t
+
             if y is not None:
                 y[split] = y_t
     else:
@@ -161,9 +170,12 @@ def make_dataset(
 
         for split in ['train', 'test']:
             X_num_t, X_cat_t, y_t = tsrc.read_pure_data(data_path, split)
-            if X_num is not None:
-                if concat:
-                    X_num_t = concat_y_to_X(X_num_t, y_t)
+            if concat:
+                if X_num is None:
+                    X_num = {}
+                X_num_t = concat_y_to_X(X_num_t, y_t)
+                X_num[split] = X_num_t
+            elif X_num is not None:
                 X_num[split] = X_num_t
             if X_cat is not None:
                 X_cat[split] = X_cat_t

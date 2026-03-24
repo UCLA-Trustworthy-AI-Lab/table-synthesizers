@@ -13,7 +13,10 @@ from sklearn.pipeline import make_pipeline
 import sklearn.preprocessing
 import torch
 import os
-from category_encoders import LeaveOneOutEncoder
+try:
+    from category_encoders import LeaveOneOutEncoder
+except ImportError:
+    LeaveOneOutEncoder = None
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import cdist
@@ -321,6 +324,8 @@ def cat_encode(
         X = {k: encoder.transform(v) for k, v in X.items()}
 
     elif encoding == 'counter':
+        if LeaveOneOutEncoder is None:
+            raise ImportError("category_encoders is required for counter categorical encoding")
         assert y_train is not None
         assert seed is not None
         loe = LeaveOneOutEncoder(sigma=0.1, random_state=seed, return_df=False)

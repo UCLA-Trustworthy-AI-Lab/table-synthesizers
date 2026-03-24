@@ -41,14 +41,40 @@ class Identity(BaseSynthesizer):
                     repeated_data = all_data.repeat(repeats, 1)
                     return repeated_data[:n]
 
-    def fit(self, data):
-        """Fit method for sklearn-style interface."""
-        self.train(data)
+    def get_state(self):
+        """Get model state for checkpointing."""
+        # Collect all training data
+        all_data = []
+        for batch in self.train_data:
+            all_data.append(batch)
+        all_data = torch.cat(all_data, dim=0)
+        
+        return {
+            'train_data': all_data,
+            'bootstrap': self.bootstrap,
+            'encoders': self.encoders,
+            'data_info': self.data_info,
+            'feature_names': self.feature_names
+        }
 
-    def sample(self, n_samples, return_dataframe=False):
-        """Sample method for sklearn-style interface."""
-        synth_data = self._generate(n_samples)
-
-        if return_dataframe and hasattr(self, 'decode_samples'):
-            return self.decode_samples(synth_data)
-        return synth_data
+    def load_state(self, checkpoint):
+        """Load model state from checkpoint."""
+        # Reconstruct train_data as a simple dataset
+        train_data_tensor = checkpoint['train_data']
+        
+        class SimpleTensorDataset(torch.utils.data.Dataset):
+            def __init__(self, tensor):
+                self.tensor = tensor
+            def __len__(self):
+                return self.tensor.size(0)
+            def __getitem__(self, idx):
+                return self.tensor[idx]
+        
+        dataset = SimpleTensorDataset(train_data_tensor)
+        self.train_data = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=False)
+        
+        self.bootstrap = checkpoint.get('bootstrap', False)
+        self.encoders = checkpoint.get('encoders', {})
+        self.data_info = checkpoint.get('data_info')
+        self.feature_names = checkpoint.get('feature_names', [])
+        self.model_loaded = True

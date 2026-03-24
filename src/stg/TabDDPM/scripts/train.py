@@ -4,7 +4,7 @@ import os
 import numpy as np
 import sys
 # Apply zero workaround
-import stg.zero_workaround as zero
+from stg import zero_workaround as zero
 sys.modules['zero'] = zero
 from ..tab_ddpm import GaussianMultinomialDiffusion
 from .utils_train import get_model, update_ema

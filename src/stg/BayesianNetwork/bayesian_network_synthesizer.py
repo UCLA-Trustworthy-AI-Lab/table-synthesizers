@@ -8,24 +8,63 @@ from ..base import BaseSynthesizer
 try:
     from synthcity.plugins import Plugins
     from synthcity.plugins.core.dataloader import GenericDataLoader
+    # pgmpy 1.0.0 introduced too many breaking changes for the synthcity version
+    # we depend on (K2Score→K2, BicScore→BIC, BayesianNetwork→DiscreteBayesianNetwork,
+    # etc.). Pin pgmpy<1.0.0 in the Docker image; mark unavailable otherwise so
+    # tests gracefully skip instead of erroring.
+    import pgmpy as _pgmpy_check
+    _pgmpy_major = int(_pgmpy_check.__version__.split('.')[0])
+    if _pgmpy_major >= 1:
+        raise ImportError(
+            f"pgmpy {_pgmpy_check.__version__} is not compatible with this version "
+            "of synthcity. BayesianNetwork requires pgmpy<1.0.0. "
+            "Rebuild the Docker image with the pinned version."
+        )
     SYNTHCITY_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError, ValueError):
     SYNTHCITY_AVAILABLE = False
 
 
 class BayesianNetworkSynthesizer(BaseSynthesizer):
     """
     Bayesian Network-based synthesizer for tabular data generation.
-    
+
     This synthesizer uses synthcity's Bayesian Network implementation to learn
     conditional dependencies between columns and generate synthetic data.
     Only supports DataFrame input (not DataLoader).
+
+    Synthcity plugin parameters (passed via config dict):
+        struct_learning_n_iter (int): Structure learning iterations. Default: 1000.
+        struct_learning_search_method (str): DAG search method.
+            Options: "hillclimb", "pc", "tree_search". Default: "tree_search".
+        struct_learning_score (str): Structure scoring metric.
+            Options: "bdeu", "bds", "bic", "k2". Default: "k2".
+        struct_max_indegree (int): Max parent nodes per variable. Default: 4.
+        encoder_max_clusters (int): Encoding clusters for discretization. Default: 10.
+        encoder_noise_scale (float): Noise added to prevent data leakage. Default: 0.1.
+        random_state (int): Random seed. Default: 0.
+        sampling_patience (int): Max retries for schema-valid sampling. Default: 500.
     """
-    
+
+    # Parameters that synthcity's BayesianNetwork plugin accepts
+    _SYNTHCITY_PARAMS = {
+        'struct_learning_n_iter', 'struct_learning_search_method',
+        'struct_learning_score', 'struct_max_indegree',
+        'encoder_max_clusters', 'encoder_noise_scale',
+        'random_state', 'sampling_patience',
+    }
+
     def __init__(self, data_info=None, **kwargs):
         if not SYNTHCITY_AVAILABLE:
             raise ImportError("synthcity package is required for BayesianNetworkSynthesizer. "
                             "Install it with: pip install synthcity")
+
+        # Extract synthcity-specific params before passing to base class
+        self._synthcity_kwargs = {}
+        for key in list(kwargs.keys()):
+            if key in self._SYNTHCITY_PARAMS:
+                self._synthcity_kwargs[key] = kwargs.pop(key)
+
         super().__init__(data_info=data_info, **kwargs)
         self.model = None
         self.stored_data = None
@@ -36,21 +75,30 @@ class BayesianNetworkSynthesizer(BaseSynthesizer):
 
     def train(self, train_data, batch_size=32):
         """Override base train method to handle DataFrame input directly."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not isinstance(train_data, pd.DataFrame):
             raise ValueError("BayesianNetworkSynthesizer only supports DataFrame input, not DataLoader")
-        
+
         # Skip base class conversion and handle DataFrame directly
         self.start_threading()
-        
+
         self.stored_data = train_data.copy()
-        
+
+        # Build synthcity plugin kwargs
+        plugin_kwargs = dict(self._synthcity_kwargs)
+
+        if plugin_kwargs:
+            logger.info("BayesianNetwork: using plugin params: %s", plugin_kwargs)
+
         # Create synthcity loader and train model
         loader = GenericDataLoader(train_data)
-        self.model = Plugins().get("bayesian_network")
+        self.model = Plugins().get("bayesian_network", **plugin_kwargs)
         self.model.fit(loader)
-        
-        print(f"BayesianNetwork: trained on {len(self.stored_data)} samples")
-        
+
+        logger.info("BayesianNetwork: trained on %d samples", len(self.stored_data))
+
         self.stop_threading()
     
     def _train(self, train_data):

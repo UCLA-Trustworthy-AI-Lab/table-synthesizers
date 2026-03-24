@@ -1,0 +1,16 @@
+{
+    "model_type": "gpu",
+    "n_epochs": 2000,
+    "diff_n_epochs": 2000,
+    "batch_size": 50,
+    "lr": 0.0002,
+    "hidden_size": 250,
+    "num_layers": 3,
+    "T": 100,
+    "sigma": 20,
+    "num_batches_per_epoch": 50,
+    "threshold": 0.01,
+    "description": "Autoencoder + Diffusion model for tabular data",
+    "speedup": "15-30x",
+    "quality": "Good"
+}

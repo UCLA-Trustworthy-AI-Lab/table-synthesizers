@@ -1,0 +1,7 @@
+{
+    "model_type": "cpu",
+    "k_neighbors": 5,
+    "description": "Oversampling technique",
+    "speedup": "1x",
+    "quality": "Medium"
+}

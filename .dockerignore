@@ -1,0 +1,64 @@
+# Keep build context minimal for fast Docker builds
+# ─── Python artifacts ──────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# ─── Test outputs / coverage ──────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ─── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Notebooks (not needed in image) ─────────────────────────────────────────
+*.ipynb
+.ipynb_checkpoints/
+
+# ─── Docs and markdown ────────────────────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ─── Workspace ────────────────────────────────────────────────────────────────
+workspace/
+checkpoints/
+
+# ─── Data / model outputs ────────────────────────────────────────────────────
+data/
+datasets/
+dataset/
+outputs/
+*.csv
+*.parquet
+*.pt
+*.pth
+
+# ─── Git / IDE ────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+
+# ─── Local config / secrets ──────────────────────────────────────────────────
+.env
+.env.*
+*.local
+wandb/
+
+# ─── Docker itself (don't re-include docker files in context layers) ──────────
+# (Removed docker/ because buildx needs to read the Dockerfile from context)

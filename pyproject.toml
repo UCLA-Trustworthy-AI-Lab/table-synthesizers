@@ -1,3 +1,22 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+# Test configuration for the new tests/ directory structure
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Standalone scripts that have test_ functions but aren't pytest suites
+addopts = "--ignore=tests/integration/test_models_comprehensive.py --ignore=tests/integration/test_problem_models.py --ignore=tests/integration/test_managers_integration.py"
+norecursedirs = [".*", "build", "dist", "*.egg"]
+markers = [
+    "gpu: tests requiring PyTorch with CUDA/MPS support",
+    "synthcity: tests requiring synthcity package",
+    "edge_case: edge case data scenarios",
+    "edge_core: edge cases for core/base models (Identity, CART, DPCART, TabDiff, TabPFGen, TVAE, etc.)",
+    "edge_synthcity: edge cases for synthcity models (ARF, BayesianNetwork, GREAT, NFlow)",
+    "edge_gpu: edge cases for GPU-heavy models (CTGAN, PATECTGAN, TabDDPM, AutoDiff, TabSyn)",
+    "slow: tests that take >30s",
+]

@@ -70,7 +70,7 @@ if __name__ == '__main__':
     
     num_trials = 1
     
-    data_dir = f'data/{dataname}'
+    data_dir = f'./data/{dataname}'  # Input data directory
 
     d_token = 4
     token_bias = True
@@ -91,7 +91,7 @@ if __name__ == '__main__':
     
     task_type = info['task_type']
 
-    ckpt_dir = f'tabsyn/vae/ckpt/{dataname}' 
+    ckpt_dir = f'data/TabSyn/ckpt/{dataname}' 
     model_save_path = f'{ckpt_dir}/model.pt'
     encoder_save_path = f'{ckpt_dir}/encoder.pt'
     decoder_save_path = f'{ckpt_dir}/decoder.pt'
@@ -127,7 +127,7 @@ if __name__ == '__main__':
         model = Model_VAE(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor, bias = True)
         model = model.to(device)
 
-        model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
+        model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt', weights_only=False))
 
         pre_encoder = Encoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor).to(device)
         pre_decoder = Decoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor)
@@ -143,7 +143,7 @@ if __name__ == '__main__':
 
         x = pre_encoder(X_test_num, X_test_cat).detach().cpu().numpy()
 
-        embedding_save_path = f'tabsyn/vae/ckpt/{dataname}/train_z.npy'
+        embedding_save_path = f'data/TabSyn/ckpt/{dataname}/train_z.npy'
         train_z = torch.tensor(np.load(embedding_save_path)).float()
         train_z = train_z[:, 1:, :]
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         denoise_fn = MLPDiffusion(in_dim, 1024).to(device)
         model = Model(denoise_fn = denoise_fn, hid_dim = train_z.shape[1]).to(device)
 
-        model.load_state_dict(torch.load(f'tabsyn/ckpt/{dataname}/model.pt'))
+        model.load_state_dict(torch.load(f'data/TabSyn/ckpt/{dataname}/model.pt', weights_only=False))
 
         # Define the masking area
 
@@ -231,7 +231,7 @@ if __name__ == '__main__':
 
         syn_df.rename(columns = idx_name_mapping, inplace=True)
 
-        save_dir = f'impute/{dataname}'
-        os.makedirs(save_dir) if not os.path.exists(save_dir) else None
+        save_dir = f'data/TabSyn/impute/{dataname}'
+        os.makedirs(save_dir, exist_ok=True)
 
         syn_df.to_csv(f'{save_dir}/{trial}.csv', index = False)

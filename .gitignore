@@ -1,6 +1,9 @@
 # Ignore all __pycache__ directories
 __pycache__/
 
+# Official TabDiff repo clone (fetched at setup time)
+src/stg/TabDiff/TabDiff_repo/
+
 # Alternatively, you can use this pattern which also ignores all files with a .pyc extension
 *.py[cod]
 
@@ -12,26 +15,73 @@ __pycache__/
 *.pyd-*.pyo
 *.pyd-*.pyc
 
+# vscode
+.vscode/
+
+# wandb
+wandb/
+
 # Input preprocessed datasets
 datasets/
+dataset/
+
+# checkpoints
+checkpoints/
+
+# api_key.json
+api_key.json
 
 # Output training datasets
 outputs/
 
+# local setup file
+
+push_to_gcr.sh
+run_tests_conda.sh
+setup_conda_env.py
+setup_conda_env.sh
+
+# presentation
 presentation/*
+
+# DEMO
+*.ipynb
 
 core
 
+# Config (keep README only)
+config/
+!config/README.md
+
+# Data
+data/
+
+# example
+example/
+
+# Patch
+patches/
+
+# AGENTS.md
 AGENTS.md
+
+# text files
 *.md
 !README.md
+!docs/*.md
+!config/README.md
 *.txt
+
+# image
+*.png
+*.jpg
 
 # Ignore virtual environments
 venv/
 env/
 .venv/
 .env/
+.env
 workspace/*
 example/test_results/*
 example/workspace/*
@@ -41,6 +91,7 @@ example/comprehensive_results*/*
 example/sandbox*/*
 *nohup.out
 example/command
+example_run/*
 
 src/stg/TabSyn/data/*
 src/stg/TabSyn/data/test_tabsyn_df/*
@@ -219,5 +270,45 @@ test_ltm_vae_final.py
 test_ltm_vae_integration.py
 LTM_VAE_INTEGRATION_STATUS.md
 
-CLAUDE.md
 example/sandbox/*.csv
+
+#old test folder
+test/
+
+# one off fix scripts
+fix_*.py
+
+# TabSyn data
+src/stg/TabSyn/data/*
+
+
+# Model outputs - standardized under data/ directory
+data/SMOTE/*
+!data/SMOTE/.gitkeep
+data/TabSyn/synthetic/*
+!data/TabSyn/synthetic/.gitkeep
+data/TabSyn/impute/*
+!data/TabSyn/impute/.gitkeep
+data/TabSyn/ckpt/*
+!data/TabSyn/ckpt/.gitkeep
+
+# ──────────────────────────────────────────────
+# Files that should never be accidentally committed
+# ──────────────────────────────────────────────
+
+# One-off training / fix scripts at repo root
+train_*.sh
+train_*.py
+check_and_fix_pytorch.sh
+
+# Docker local overrides
+docker/.dockerignore
+docker/docker-compose.yml
+
+# Extra docs (keep only docs/*.md whitelisted above)
+docs/*.md
+!docs/CLAUDE.md
+!docs/README.md
+
+# Extra config presets
+!config/default_*.json

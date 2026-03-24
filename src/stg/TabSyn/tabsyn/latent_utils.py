@@ -36,7 +36,7 @@ def get_input_train(args):
         info = json.load(f)
 
     ckpt_dir = f'{curr_dir}/ckpt/{dataname}/'
-    embedding_save_path = f'{curr_dir}/vae/ckpt/{dataname}/train_z.npy'
+    embedding_save_path = f'data/TabSyn/ckpt/{dataname}/train_z.npy'
     train_z = torch.tensor(np.load(embedding_save_path)).float()
 
     train_z = train_z[:, 1:, :]
@@ -66,7 +66,7 @@ def get_input_generate(args):
 
     _, _, categories, d_numerical, num_inverse, cat_inverse = preprocess(dataset_dir, task_type = task_type, inverse = True)
 
-    embedding_save_path = f'{curr_dir}/vae/ckpt/{dataname}/train_z.npy'
+    embedding_save_path = f'data/TabSyn/ckpt/{dataname}/train_z.npy'
     train_z = torch.tensor(np.load(embedding_save_path)).float()
 
     train_z = train_z[:, 1:, :]
@@ -77,8 +77,8 @@ def get_input_generate(args):
     train_z = train_z.view(B, in_dim)
     pre_decoder = Decoder_model(2, d_numerical, categories, 4, n_head = 1, factor = 32)
 
-    decoder_save_path = f'{curr_dir}/vae/ckpt/{dataname}/decoder.pt'
-    pre_decoder.load_state_dict(torch.load(decoder_save_path))
+    decoder_save_path = f'data/TabSyn/ckpt/{dataname}/decoder.pt'
+    pre_decoder.load_state_dict(torch.load(decoder_save_path, weights_only=False))
 
     info['pre_decoder'] = pre_decoder
     info['token_dim'] = token_dim
@@ -122,8 +122,13 @@ def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device):
         syn_cat = []
         for pred in x_hat_cat:
             syn_cat.append(pred.argmax(dim=-1))
-        syn_cat = torch.stack(syn_cat).t().cpu().numpy()
-        syn_cat = cat_inverse(syn_cat)
+
+        # Handle case where x_hat_cat is empty (no actual categorical features, only categorical target)
+        if len(syn_cat) > 0:
+            syn_cat = torch.stack(syn_cat).t().cpu().numpy()
+            syn_cat = cat_inverse(syn_cat)
+        else:
+            syn_cat = torch.empty((syn_data.shape[0], 0)).cpu().numpy()
     else:
         syn_cat = torch.empty((syn_data.shape[0], 0)).cpu().numpy()  # Empty array for syn_cat
 

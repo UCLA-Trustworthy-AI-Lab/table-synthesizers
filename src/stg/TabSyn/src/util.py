@@ -16,8 +16,14 @@ from typing import Any, Callable, List, Dict, Type, Optional, Tuple, TypeVar, Un
 
 import __main__
 import numpy as np
-import tomli
-import tomli_w
+try:
+    import tomllib as tomli
+except ImportError:
+    import tomli
+try:
+    import tomli_w
+except ImportError:
+    tomli_w = None
 import torch
 import typing as ty
 # Apply zero workaround for TabSyn subprocess
@@ -35,8 +41,11 @@ except ImportError:
         project_root = os.path.dirname(project_root)
         zero_path = os.path.join(project_root, 'src', 'stg', 'zero_workaround.py')
         if os.path.exists(zero_path):
-            sys.path.insert(0, os.path.join(project_root, 'src'))
-            import stg.zero_workaround as zero
+            # Import zero_workaround directly as a module to avoid circular imports
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("zero_workaround", zero_path)
+            zero = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(zero)
             sys.modules['zero'] = zero
             break
     else:
@@ -146,6 +155,8 @@ def load_config(path: Union[Path, str]) -> Any:
 
 
 def dump_config(config: Any, path: Union[Path, str]) -> None:
+    if tomli_w is None:
+        raise ImportError("tomli_w is required to write TOML config files")
     with open(path, 'wb') as f:
         tomli_w.dump(pack_config(config), f)
     # check that there are no bugs in all these "pack/unpack" things
@@ -215,6 +226,7 @@ def dump_metrics(metrics: Dict[str, Any], path: Path) -> None:
 
 
 def load_checkpoint(path: Path, *args, **kwargs) -> Dict[str, np.ndarray]:
+    kwargs.setdefault('weights_only', False)
     return torch.load(
         _get_output_item_path(path, 'checkpoint.pt', True), *args, **kwargs
     )

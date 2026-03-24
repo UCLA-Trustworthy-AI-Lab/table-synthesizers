@@ -5,6 +5,7 @@ import pickle
 import json
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
+import argparse
 
 # Add src to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
@@ -22,12 +23,41 @@ class CustomTensorDataset(Dataset):
         return self.data_tensor[idx]
 
 def main():
-    config_path = os.getenv('SYNTHESIZER_CONFIG_PATH')
-    transformed_data_path = os.getenv('TRANSFORMED_DATA_PATH')
-    output_path = os.getenv('SYNTHESIZER_OUTPUT_PATH')
+    parser = argparse.ArgumentParser(description='Table Synthesizers - Training with Management System')
+    parser.add_argument('--profile', default='quick', choices=['quick', 'default', 'production'],
+                       help='Configuration profile to use')
+    parser.add_argument('--with-wandb', action='store_true',
+                       help='Enable WandB experiment tracking')
+    parser.add_argument('--template', type=str, default=None,
+                       help='Configuration template to apply')
+    parser.add_argument('--select-training-model', type=str, default=None,
+                       choices=['Identity', 'TVAE', 'CTGAN', 'PATECTGAN', 'SMOTE', 'CART', 'DPCART',
+                               'AIM', 'TabDDPM', 'TabSyn', 'AutoDiff', 'LTM_VAE',
+                               'ARF', 'NFlow', 'BayesianNetwork', 'GREAT'],
+                       help='Select training model algorithm (overrides config file)')
+    parser.add_argument('--config-path', type=str, default=None,
+                       help='Path to the config file')
+    parser.add_argument('--transformed-data-path', type=str, default=None,
+                       help='Path to the transformed data')
+    parser.add_argument('--synthesizer-output-path', type=str, default=None,
+                       help='Path to the synthesizer output')
+    args = parser.parse_args()
 
-    if not all([config_path, transformed_data_path, output_path]):
-        raise ValueError("Environment variables SYNTHESIZER_CONFIG_PATH, TRANSFORMED_DATA_PATH, and SYNTHESIZER_OUTPUT_PATH must be set.")
+    print("="*80)
+    print("TABLE SYNTHESIZERS - Training with Management System")
+    print("="*80)
+
+    # Prioritize args, fallback to env vars
+    config_path = args.config_path or os.environ.get('SYNTHESIZER_CONFIG_PATH')
+    transformed_data_path = args.transformed_data_path or os.environ.get('TRANSFORMED_DATA_PATH')
+    output_path = args.synthesizer_output_path or os.environ.get('SYNTHESIZER_OUTPUT_PATH')
+
+    if not config_path:
+        raise ValueError("Config path must be provided via --config-path or SYNTHESIZER_CONFIG_PATH env var")
+    if not transformed_data_path:
+         raise ValueError("Transformed data path must be provided via --transformed-data-path or TRANSFORMED_DATA_PATH env var")
+    if not output_path:
+        raise ValueError("Output path must be provided via --synthesizer-output-path or SYNTHESIZER_OUTPUT_PATH env var")
 
     # Load the config JSON
     if os.path.exists(config_path):
@@ -39,6 +69,11 @@ def main():
             raise ValueError("The config file must contain 'model' and 'N' keys.")
     else:
         raise FileNotFoundError(f"Config file not found at {config_path}")
+    
+    # Override model if --select-training-model is provided
+    if args.select_training_model:
+        print(f"🔄 Overriding model from config: '{model}' -> '{args.select_training_model}'")
+        model = args.select_training_model
 
     data_csv_file = os.path.join(transformed_data_path, 'transform_output.csv')
     checkpoint_file = os.path.join(transformed_data_path, 'checkpoint.json')
@@ -47,10 +82,43 @@ def main():
     # Load the DataFrame from CSV
     if os.path.exists(data_csv_file):
         df = pd.read_csv(data_csv_file)
-        tensor_data = torch.tensor(df.values, dtype=torch.float32)
-        custom_dataset = CustomTensorDataset(tensor_data)
-        dataloader = DataLoader(custom_dataset, batch_size=32, shuffle=True)
-        print("DataLoader created successfully from CSV.")
+        
+        # Models that ONLY support DataFrame input (not DataLoader)
+        # These models have their own internal encoding/preprocessing
+        DATAFRAME_MODELS = [
+            'smote', 'smotesynthesizer',
+            'cart', 'cartsynthesizer', 
+            'dpcart', 'dpcartsynthesizer',
+            'arf', 'arfsynthesizer',
+            'nflow', 'nflowsynthesizer',
+            'bayesiannetwork', 'bayesiannetworksynthesizer',
+            'great', 'greatsynthesizer',
+            'tabsyn', 'tabsynsynthesizer',
+            'autodiff', 'autodiffsynthesizer'
+        ]
+        
+        # Normalize model name for comparison
+        model_key = model.lower() if isinstance(model, str) else ''
+        
+        if model_key in DATAFRAME_MODELS:
+            print(f"Model '{model}' detected: Using DataFrame input directly.")
+            # Verify DataFrame content before passing
+            if df.empty:
+                raise ValueError("Input DataFrame is empty.")
+            training_data = df
+        else:
+            # Legacy behavior: Convert to Tensor DataLoader
+            print(f"Model '{model}' detected: Converting to Tensor DataLoader.")
+            try:
+                # Attempt to convert to float tensors - this assumes all data is numerical!
+                tensor_data = torch.tensor(df.values, dtype=torch.float32)
+                custom_dataset = CustomTensorDataset(tensor_data)
+                training_data = DataLoader(custom_dataset, batch_size=32, shuffle=True)
+                print("DataLoader created successfully from CSV.")
+            except ValueError as e:
+                # Catch conversion errors (e.g., strings in data)
+                raise ValueError(f"Failed to convert data to FloatTensor for model '{model}'. "
+                               f"Ensure all data is numerical or use a model that supports DataFrames. Error: {e}")
     else:
         raise FileNotFoundError(f"Data CSV file not found at {data_csv_file}")
 
@@ -71,19 +139,30 @@ def main():
 
     synthesizer = TableSynthesizer(model, config, data_info)
 
-    synthesizer.fit(dataloader)
+    # Use the appropriate training data (DataFrame or DataLoader)
+    synthesizer.fit(training_data)
     sampled_data = synthesizer.sample(n=N)
 
-    # Convert sampled_data tensor to CSV
+    # Convert sampled_data to DataFrame if needed
     column_names = []
     for col, param in checkpoint['transformers_parameters'].items():
         column_names += [col+surfix for surfix in param['transformed_surfixes']]
+    
     if isinstance(sampled_data, torch.Tensor):
-        sampled_data = sampled_data.numpy()
-    print(sampled_data.shape)
-    df = pd.DataFrame(sampled_data, columns=column_names)
+        sampled_data = sampled_data.detach().cpu().numpy()
+        df_out = pd.DataFrame(sampled_data, columns=column_names)
+    elif isinstance(sampled_data, pd.DataFrame):
+        df_out = sampled_data
+        # Ensure columns match if possible, otherwise use generated names
+        if len(df_out.columns) == len(column_names):
+            df_out.columns = column_names
+    else:
+         # Numpy array or other iterable
+        df_out = pd.DataFrame(sampled_data, columns=column_names)
+
+    print(f"Output shape: {df_out.shape}")
     synthetic_data_file = os.path.join(output_path, 'synthetic_data.csv')
-    df.to_csv(synthetic_data_file, index=False)
+    df_out.to_csv(synthetic_data_file, index=False)
     print(f"Synthetic data saved to {synthetic_data_file}")
 
 if __name__ == "__main__":

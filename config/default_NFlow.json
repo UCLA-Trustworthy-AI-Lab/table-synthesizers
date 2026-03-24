@@ -1,0 +1,20 @@
+{
+    "model_type": "cpu",
+    "description": "Normalizing Flow - Learns invertible transformations to model data distribution",
+    "backend": "synthcity",
+    "speedup": "1-2x",
+    "quality": "High",
+    "n_iter": 1000,
+    "n_layers_hidden": 1,
+    "n_units_hidden": 100,
+    "batch_size": 200,
+    "num_transform_blocks": 1,
+    "dropout": 0.1,
+    "batch_norm": false,
+    "num_bins": 8,
+    "lr": 0.001,
+    "encoder_max_clusters": 10,
+    "patience": 5,
+    "random_state": 0,
+    "sampling_patience": 500
+}

@@ -1,0 +1,12 @@
+{
+    "model": "TabDDPM",
+    "N": 1000,
+    "num_epochs": 1000,
+    "steps": 1000,
+    "lr": 0.002,
+    "weight_decay": 1e-4,
+    "model_type": "mlp",
+    "num_timesteps": 1000,
+    "gaussian_loss_type": "mse",
+    "scheduler": "cosine"
+}

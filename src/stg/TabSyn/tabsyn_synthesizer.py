@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import torch
 import subprocess
+import sys
 import os
+import shutil
 import tempfile
 import time
 from typing import Optional
@@ -22,14 +24,24 @@ except ImportError:
 class TabSynSynthesizer(BaseSynthesizer):
     """
     TabSyn synthesizer for tabular data generation.
-    
+
     This synthesizer uses TabSyn's VAE + diffusion approach to generate
     synthetic tabular data. It trains a VAE to learn latent representations
     then uses a diffusion model for generation.
     Only supports DataFrame input (not DataLoader).
+
+    Training creates temporary files (preprocessed data, checkpoints,
+    embeddings) under the TabSyn source directory. Call ``cleanup()``
+    when you are done sampling to remove them, or use the instance as a
+    context manager::
+
+        with TabSynSynthesizer(epochs=50) as synth:
+            synth.train(df)
+            synthetic = synth.sample(1000, return_dataframe=True)
+        # all temp files removed automatically
     """
     
-    def __init__(self, data_info=None, dataset_name=None, epochs=10, **kwargs):
+    def __init__(self, data_info=None, dataset_name=None, epochs=1000, **kwargs):
         if not TABSYN_AVAILABLE:
             raise ImportError("TabSyn dependencies are required for TabSynSynthesizer")
         
@@ -40,6 +52,10 @@ class TabSynSynthesizer(BaseSynthesizer):
         self.epochs = epochs  # Add epochs parameter with reasonable default
         self.stored_data = None
         self.trained = False
+        self._cleanup_dirs = []
+        self._cleanup_files = []
+        self._cleaned_up = False
+        self._bootstrap_sampling = False
 
     def fit(self, data):
         """Sklearn-style fit method."""
@@ -56,6 +72,7 @@ class TabSynSynthesizer(BaseSynthesizer):
         self.set_seed(self._seed)
         
         self.stored_data = train_data.copy()
+        self._bootstrap_sampling = False
         
         print(f"TabSyn: training on {len(self.stored_data)} samples")
 
@@ -63,13 +80,22 @@ class TabSynSynthesizer(BaseSynthesizer):
         # and mark as trained. This preserves interfaces for tests without incurring cost.
         if self.epochs <= 1:
             self.trained = True
+            self._bootstrap_sampling = True
             print("[TabSyn][train] Fast path enabled (epochs<=1): skipping VAE/diffusion training.", flush=True)
+            self.stop_threading()
+            return
+
+        if train_data.shape[1] <= 1:
+            self.trained = True
+            self._bootstrap_sampling = True
+            print("[TabSyn][train] Single-column fast path enabled: using bootstrap sampling instead of VAE/diffusion training.", flush=True)
             self.stop_threading()
             return
         
         # Save current directory
         original_dir = os.getcwd()
-        
+        _training_succeeded = False
+
         try:
             start_total = time.time()
             # Change to TabSyn directory 
@@ -77,50 +103,97 @@ class TabSynSynthesizer(BaseSynthesizer):
             os.chdir(tabsyn_dir)
             print(f"[TabSyn][train] cwd={os.getcwd()}, dataset={self.dataset_name}", flush=True)
 
-            
+            # Record artifact paths for later cleanup
+            tabsyn_abs = os.path.abspath(tabsyn_dir)
+            self._cleanup_dirs = [
+                os.path.join(tabsyn_abs, 'data', self.dataset_name),
+                os.path.join(tabsyn_abs, 'synthetic', self.dataset_name),
+                os.path.join(tabsyn_abs, 'data', 'TabSyn', 'ckpt', self.dataset_name),
+                os.path.join(tabsyn_abs, 'tabsyn', 'ckpt', self.dataset_name),
+            ]
+            self._cleanup_files = [
+                os.path.join(tabsyn_abs, 'data', 'Info', f'{self.dataset_name}.json'),
+            ]
+            self._cleaned_up = False
+
             # Prepare the dataset
             prep_start = time.time()
             print("[TabSyn][train] Preparing dataset and metadata...", flush=True)
-            task_type = infer_task_type(train_data.values)
+
             # Infer task type using the DataFrame to correctly detect categorical targets
-            # task_type = infer_task_type(train_data)
-            create_dataset_with_metadata(train_data.values, self.dataset_name, task_type)
+            task_type = infer_task_type(train_data)
+
+            # Encode categorical columns before converting to numpy
+            train_data_encoded = train_data.copy()
+            for col in train_data_encoded.columns:
+                if train_data_encoded[col].dtype == 'object' or isinstance(train_data_encoded[col].dtype, pd.CategoricalDtype):
+                    # Convert categorical to numeric codes
+                    train_data_encoded[col] = pd.Categorical(train_data_encoded[col]).codes
+
+            create_dataset_with_metadata(train_data_encoded.values, self.dataset_name, task_type)
             process_data(self.dataset_name)
             print(f"[TabSyn][train] Dataset prep done in {time.time()-prep_start:.2f}s", flush=True)
             
             # Step 1: Train the VAE model
             vae_start = time.time()
             print("[TabSyn][train] Starting VAE training subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "vae",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][VAE stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][VAE stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"VAE training subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][train] VAE training finished in {time.time()-vae_start:.2f}s", flush=True)
             
             # Step 2: Train the diffusion model
             diff_start = time.time()
             print("[TabSyn][train] Starting diffusion training subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "train",
                 "--epochs", str(self.epochs)
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][Diffusion stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][Diffusion stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Diffusion training subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][train] Diffusion training finished in {time.time()-diff_start:.2f}s", flush=True)
             self.trained = True
+            _training_succeeded = True
             print(f"[TabSyn][train] Completed in {time.time()-start_total:.2f}s", flush=True)
-            
+
         except Exception as e:
-            print(f"TabSyn training error: {e}")
+            print(f"TabSyn training error: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             raise RuntimeError(f"TabSyn training failed: {e}")
-        
+
         finally:
-            pass
-        
+            if not _training_succeeded:
+                self.cleanup()
+            # Always restore original directory
+            os.chdir(original_dir)
+            print(f"[TabSyn][train] Restored working directory to {os.getcwd()}", flush=True)
+
         self.stop_threading()
     
     def _train(self, train_data):
@@ -133,7 +206,7 @@ class TabSynSynthesizer(BaseSynthesizer):
             raise RuntimeError("Model must be trained before generating samples")
         
         # If fast path (epochs<=1), bootstrap from stored data to satisfy interface
-        if self.epochs <= 1:
+        if self._bootstrap_sampling:
             if self.stored_data is None or len(self.stored_data) == 0:
                 raise RuntimeError("No stored data available for fast sampling path")
             rs = self._seed if getattr(self, "_seed", None) is not None else 42
@@ -158,13 +231,23 @@ class TabSynSynthesizer(BaseSynthesizer):
             # Generate synthetic data
             subp_start = time.time()
             print("[TabSyn][sample] Starting sampling subprocess...", flush=True)
-            subprocess.run([
-                "python", os.path.join(tabsyn_dir, "main.py"),
+            result = subprocess.run([
+                sys.executable, os.path.join(tabsyn_dir, "main.py"),
                 "--dataname", self.dataset_name,
                 "--method", "tabsyn",
                 "--mode", "sample",
                 "--save_path", save_path
-            ], check=True)
+            ], capture_output=True, text=True, check=False)
+
+            # Print subprocess output for debugging
+            if result.stdout:
+                print(f"[TabSyn][Sample stdout]:\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[TabSyn][Sample stderr]:\n{result.stderr}", flush=True)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"Sampling subprocess failed with exit code {result.returncode}")
+
             print(f"[TabSyn][sample] Sampling subprocess finished in {time.time()-subp_start:.2f}s", flush=True)
             
             # Load synthetic data
@@ -256,3 +339,70 @@ class TabSynSynthesizer(BaseSynthesizer):
                 return pd.DataFrame(tensor_samples.numpy(), columns=columns)
             else:
                 return pd.DataFrame(tensor_samples.numpy())
+
+    # ------------------------------------------------------------------
+    # Cleanup lifecycle
+    # ------------------------------------------------------------------
+
+    def cleanup(self):
+        """Remove all temporary files and checkpoints created during training.
+
+        Safe to call multiple times (idempotent). After cleanup the instance
+        can no longer sample; ``trained`` is reset to ``False``.
+        """
+        if self._cleaned_up:
+            return
+
+        for d in self._cleanup_dirs:
+            if os.path.isdir(d):
+                shutil.rmtree(d, ignore_errors=True)
+
+        for f in self._cleanup_files:
+            try:
+                if os.path.isfile(f):
+                    os.remove(f)
+            except OSError:
+                pass
+
+        # Remove empty parent directories that TabSyn may have created,
+        # walking upward but never above the TabSyn source root.
+        tabsyn_root = os.path.abspath(os.path.dirname(__file__))
+        _candidates = set()
+        for d in self._cleanup_dirs:
+            parent = os.path.dirname(d)
+            if parent:
+                _candidates.add(parent)
+        for f in self._cleanup_files:
+            parent = os.path.dirname(f)
+            if parent:
+                _candidates.add(parent)
+        # Walk upward from each candidate (deepest first) until we hit
+        # a non-empty directory or the TabSyn source root.
+        for start in sorted(_candidates, key=lambda p: p.count(os.sep), reverse=True):
+            cur = start
+            while cur and cur != tabsyn_root:
+                try:
+                    if os.path.isdir(cur) and not os.listdir(cur):
+                        os.rmdir(cur)
+                    else:
+                        break
+                except OSError:
+                    break
+                cur = os.path.dirname(cur)
+
+        self._cleaned_up = True
+        self.trained = False
+
+    def __del__(self):
+        """Safety-net: remove temp files when the object is garbage-collected."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
+        return False

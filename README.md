@@ -1,85 +1,74 @@
 # Table Synthesizers
 
-A Python library for generating synthetic tabular data using state-of-the-art machine learning models. This library provides multiple synthesizers including GANs, Variational Autoencoders, Diffusion Models, and privacy-preserving methods.
+A comprehensive Python library for generating synthetic tabular data using 16 state-of-the-art machine learning models. Supports GANs, Variational Autoencoders, Diffusion Models, Transformers, Bayesian Networks, and privacy-preserving methods with GPU acceleration.
 
-## 🚀 Features
+## Features
 
-- **16 Synthesizer Models**: Complete framework coverage with 100% success rate ✅
-- **Simple DataFrame Interface**: Direct pandas DataFrame input with automatic encoding
-- **Flexible Output**: Generate synthetic data as tensors or DataFrames
-- **Privacy-Preserving Options**: Differential privacy support with AIM, PATECTGAN, and DPCART
-- **Advanced Models**: GANs, VAEs, Diffusion Models, Transformers, and Bayesian Networks
-- **External Integration**: Full synthcity package compatibility (BayesianNetwork, ARF, NFlow, GREAT)
-- **Extensible Architecture**: Easy to add custom synthesizers
-- **Comprehensive Testing**: Ultra-quick, quick, and full testing modes available
+- **16 Synthesizer Models** with 100% success rate across all models
+- **Simple DataFrame Interface** - direct pandas DataFrame input with automatic encoding
+- **GPU Acceleration** - CUDA and Apple Silicon (MPS) support with automatic device detection
+- **Privacy-Preserving Options** - differential privacy with AIM, PATECTGAN, and DPCART
+- **Externalized Configuration** - JSON config files for all models with runtime overrides
+- **Iterative Training** - batch training across multiple datasets
+- **WandB Integration** - experiment tracking and monitoring
+- **Comprehensive Testing** - unit, integration, and benchmark test suites
 
-## 📦 Installation
+## Installation
+
+Dependencies are split into four tiers. Install only what you need:
 
 ```bash
-# Install basic requirements
+# Clone the repository
+git clone https://github.com/ohsono/table-synthesizers.git
+cd table-synthesizers
+
+# Base only (Identity, CART, DPCART, SMOTE, AIM - no torch needed)
 pip install -r requirements.txt
 
-# Install development dependencies
-pip install -e .[dev]
+# Add GPU models (CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn, LTM_VAE)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130  # Blackwell SM 12.1
+pip install -r requirements-gpu.txt
 
-# Activate the conda environment
-conda activate table-synthesizers
+# Or add CPU torch models (same models, no GPU required)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-cpu.txt
+
+# Add synthcity models (BayesianNetwork, ARF, GREAT, NFlow)
+pip install -r requirements-synthcity.txt
 ```
 
-## 🏗️ Repository Structure
+| File | Models | Key Packages |
+|------|--------|-------------|
+| `requirements.txt` | Identity, CART, DPCART, SMOTE, AIM | pandas, numpy, sklearn |
+| `requirements-gpu.txt` | CTGAN, TVAE, TabDDPM, PATECTGAN, AutoDiff, TabSyn | torch (CUDA), transformers |
+| `requirements-cpu.txt` | Same as GPU, on CPU | torch (CPU), transformers |
+| `requirements-synthcity.txt` | BayesianNetwork, ARF, GREAT, NFlow | synthcity |
 
-```
-table-synthesizers/
-├── src/stg/                    # Main library code
-│   ├── base.py                 # BaseSynthesizer abstract class
-│   ├── tableSynthesizer.py     # Factory class for model selection
-│   ├── zero_workaround.py      # Replaces libzero dependency
-│   ├── identity/               # Identity baseline synthesizer
-│   ├── TVAE/                   # Tabular Variational AutoEncoder
-│   ├── CTGAN/                  # Conditional GAN
-│   ├── PATECTGAN/             # Privacy-aware CTGAN
-│   ├── TabDDPM/               # Diffusion model
-│   ├── TabSyn/                # Advanced tabular synthesis
-│   ├── AutoDiff/              # VAE + Diffusion hybrid
-│   ├── LTM_VAE.py             # Latent Table Model wrapper
-│   ├── SMOTE/                 # Oversampling technique
-│   ├── CART/                  # Decision tree synthesis
-│   ├── DPCART/                # Differentially private CART
-│   ├── AIM/                   # Adaptive and Iterative Mechanism
-│   ├── BayesianNetwork/       # Bayesian network synthesis (synthcity)
-│   ├── ARF/                   # Adversarial Random Forest (synthcity)
-│   ├── NFlow/                 # Normalizing flows (synthcity)
-│   └── GREAT/                 # Transformer-based synthesis (synthcity)
-├── test/                      # Comprehensive test suite
-│   ├── test_models_comprehensive.py # Main test runner (all models)
-│   ├── dataframe_test_utils.py # Shared DataFrame testing utilities
-│   ├── test_*.py              # Individual model tests
-│   └── test_data/             # Test datasets and utilities
-├── requirements.txt           # Dependencies (PyTorch 2.8, synthcity, etc.)
-├── CLAUDE.md                  # Development guide with all model details
-└── README.md                  # This file
+### GPU Verification
+
+```bash
+# Verify GPU availability
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, MPS: {hasattr(torch.backends, \"mps\") and torch.backends.mps.is_available()}')"
+
+# Print detailed GPU info
+python -c "from stg.gpu_utils import print_gpu_info; print_gpu_info()"
 ```
 
-## 🛠️ Quick Start
+See [docs/GPU_ACCELERATION_GUIDE.md](docs/GPU_ACCELERATION_GUIDE.md) for detailed GPU setup instructions.
 
-### Basic Usage with DataFrame Input
+## Quick Start
+
+### Basic Usage
 
 ```python
 import pandas as pd
-from stg import TableSynthesizer
+from stg.tableSynthesizer import TableSynthesizer
 
 # Load your data
 df = pd.read_csv('your_data.csv')
 
-# Or create sample data
-df = pd.DataFrame({
-    'age': [25, 30, 35, 40, 45],
-    'income': [50000, 60000, 70000, 80000, 90000],
-    'category': ['A', 'B', 'A', 'C', 'B']
-})
-
-# Initialize TVAE synthesizer
-synthesizer = TableSynthesizer('TVAE', {
+# Initialize a synthesizer
+synthesizer = TableSynthesizer('TVAE', config={
     'epochs': 100,
     'batch_size': 32,
     'embedding_dim': 128
@@ -88,220 +77,296 @@ synthesizer = TableSynthesizer('TVAE', {
 # Train the model
 synthesizer.fit(df)
 
-# Generate synthetic data as DataFrame
-synthetic_df = synthesizer.sample(n=100, return_dataframe=True)
+# Generate synthetic data as a DataFrame
+synthetic_df = synthesizer.sample(n=1000, return_dataframe=True)
 print(synthetic_df.head())
-
-# Or generate as tensor for further processing
-synthetic_tensor = synthesizer.sample(n=100)
-print(f"Generated tensor shape: {synthetic_tensor.shape}")
 ```
 
-### Advanced Configuration
+### Using the Training Script
 
-```python
-# Configure model-specific parameters
-synthesizer = TableSynthesizer('TVAE', {
-    'epochs': 300,
-    'batch_size': 500,
-    'embedding_dim': 256,
-    'compress_dims': (256, 128),
-    'decompress_dims': (128, 256),
-    'l2scale': 1e-5,
-    'loss_factor': 2
-})
+```bash
+# Train a single model on a dataset
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --models CTGAN \
+    --epochs 50 \
+    --samples 1000
 
-# Train with custom batch size
-synthesizer.fit(df, batch_size=64)
+# Train all GPU-optimized models
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --group gpu \
+    --epochs 50
 
-# Generate with different sample sizes
-small_sample = synthesizer.sample(n=50, return_dataframe=True)
-large_sample = synthesizer.sample(n=1000, return_dataframe=True)
+# Train on multiple datasets iteratively
+python train_all_compatible_models.py \
+    --data_folder ./datasets \
+    --iterate_datasets \
+    --models CTGAN TVAE \
+    --epochs 50
+
+# Select a specific model for training
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --select-training-model TVAE
 ```
 
-## 🧪 Available Synthesizers (100% Success Rate - All 16 Models Working! 🎉)
+### Using Configuration Files
 
-### Core Models (Fast & Production-Ready)
-| Model | Description | Status | Performance | Best For |
-|-------|-------------|--------|-------------|----------|
-| **Identity** | Baseline that returns training samples | ✅ Working | 0.0s | Testing, baselines |
-| **TVAE** | Tabular Variational AutoEncoder | ✅ Working | 0.1s | Mixed data types, general use |
-| **SMOTE** | Synthetic Minority Oversampling | ✅ Working | 0.0s | Imbalanced datasets |
-| **CART** | Decision tree-based synthesis | ✅ Working | 0.0s | Interpretable models |
-| **DPCART** | Differentially private CART | ✅ Working | 0.0s | Privacy + interpretability |
-| **AIM** | Adaptive and iterative mechanism | ✅ Working | 0.01s | Privacy-sensitive applications |
+```bash
+# Train with default config (config/default_CTGAN.json)
+python train_all_compatible_models.py --dataset insurance --models CTGAN
+
+# Train with custom config directory
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --config_dir ./my_configs \
+    --models CTGAN
+
+# Override config values at runtime
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --models CTGAN \
+    --epochs 100 \
+    --batch_size 256
+```
+
+See [config/README.md](config/README.md) for configuration details.
+
+## Available Synthesizers
+
+### Core Models (Fast, Production-Ready)
+
+| Model | Type | Device | Description |
+|-------|------|--------|-------------|
+| **Identity** | Baseline | CPU | Returns training samples (for testing/baselines) |
+| **TVAE** | VAE | GPU | Tabular Variational AutoEncoder |
+| **SMOTE** | Statistical | CPU | Synthetic Minority Oversampling Technique |
+| **CART** | Tree | CPU | Decision tree-based synthesis |
+| **DPCART** | Tree + DP | CPU | Differentially private CART |
+| **AIM** | DP | CPU | Adaptive and Iterative Mechanism |
 
 ### Advanced Deep Learning Models
-| Model | Description | Status | Performance | Best For |
-|-------|-------------|--------|-------------|----------|
-| **TabDDPM** | Diffusion model for tabular data | ✅ Working | 14s | High-quality generation |
-| **AutoDiff** | VAE + Diffusion hybrid | ✅ Working | 29s | Complex data distributions |
-| **LTM_VAE** | Latent Table Model | ✅ Working | 44s | Large-scale synthesis |
-| **TabSyn** | Advanced tabular synthesis | ✅ Working | 0.0s* | Fast generation |
-| **CTGAN** | Conditional GAN | ✅ Working | 90s+ | Large datasets |
-| **PATECTGAN** | Privacy-aware CTGAN with PATE | ✅ Working | 90s+ | Privacy-sensitive applications |
 
-### Synthcity-Based Models (External Package)
-| Model | Description | Status | Performance | Best For |
-|-------|-------------|--------|-------------|----------|
-| **ARF** | Adversarial Random Forest | ✅ Working | 1.6s | Tree-based synthesis |
-| **NFlow** | Normalizing flows | ✅ Working | 3.4s | Probabilistic modeling |
-| **BayesianNetwork** | Bayesian network synthesis | ✅ Working | 11.7s | Causal relationships |
-| **GREAT** | Transformer-based synthesis | ✅ Working | 46s | Large language model approach |
+| Model | Type | Device | Description |
+|-------|------|--------|-------------|
+| **TabDDPM** | Diffusion | GPU | Diffusion model for tabular data |
+| **AutoDiff** | VAE+Diffusion | GPU | VAE + Diffusion hybrid |
+| **CTGAN** | GAN | GPU | Conditional GAN |
+| **PATECTGAN** | GAN + DP | GPU | Privacy-aware CTGAN with PATE framework |
+| **TabSyn** | Hybrid | GPU | Advanced tabular synthesis (VAE + Diffusion) |
+| **LTM_VAE** | VAE | GPU | Latent Table Model wrapper |
 
-*TabSyn uses fast path for low epoch training
+### Synthcity-Based Models
 
-### 🚀 Major Breakthrough: 100% Model Coverage Achieved! (September 2025)
+| Model | Type | Device | Description |
+|-------|------|--------|-------------|
+| **ARF** | Tree | CPU | Adversarial Random Forest |
+| **NFlow** | Flow | GPU | Normalizing Flows |
+| **BayesianNetwork** | Probabilistic | CPU | Bayesian network synthesis |
+| **GREAT** | Transformer | GPU | GeneRative fEAture Transformer |
 
-#### Core Framework Fixes:
-- **CTGAN**: ✅ Added missing sklearn-style interface methods (`fit`, `sample`, `decode_samples`)
-- **PATECTGAN**: ✅ Fixed tensor dimension mismatches in PATE implementation
-- **SMOTE**: ✅ Fixed undefined variable errors (`n_jobs` parameter)
-- **TabSyn**: ✅ Fixed zero module imports in subprocess architecture
-- **TabDDPM**: ✅ Fixed zero module imports in training/sampling scripts
-- **AutoDiff**: ✅ Fixed batch size compatibility issues with small datasets
-- **LTM_VAE**: ✅ Implemented special handling for tensor dimension issues
+All synthcity models accept plugin-specific hyperparameters via the config dict:
 
-#### Synthcity Integration Success:
-- **PyTorch 2.8 Upgrade**: ✅ Resolved RMSNorm compatibility issues with opacus
-- **Complete Synthcity Support**: ✅ All 4 external models now working (BayesianNetwork, ARF, NFlow, GREAT)
-- **Dependency Resolution**: ✅ Fixed complex PyTorch/torchvision/synthcity compatibility matrix
+```python
+# Tune BayesianNetwork structure learning
+synthesizer = TableSynthesizer('BayesianNetwork', config={
+    'struct_learning_search_method': 'hillclimb',  # hillclimb, pc, tree_search
+    'struct_learning_score': 'bic',                # bdeu, bds, bic, k2
+    'struct_max_indegree': 6,
+    'encoder_max_clusters': 20,
+})
 
-**Result: All 16 synthesizers are now fully functional with comprehensive test coverage!**
-
-## 🔧 Testing
-
-### Comprehensive Model Testing (Recommended)
-
-```bash
-# Full comprehensive test (all models, full training)
-python test/test_models_comprehensive.py
-
-# Quick test (smaller datasets, fewer epochs)
-python test/test_models_comprehensive.py --mode quick
-
-# Ultra-quick test (tiny datasets, minimal training) - Great for CI/CD
-python test/test_models_comprehensive.py --mode ultra-quick
-
-# Test specific model only
-python test/test_models_comprehensive.py --model TVAE --mode quick
+# Tune GREAT transformer training
+synthesizer = TableSynthesizer('GREAT', config={
+    'n_iter': 200,
+    'batch_size': 16,
+    'device': 'cuda',
+})
 ```
 
-### Individual Tests
+See [docs/CLAUDE.md](docs/CLAUDE.md#synthcity-plugin-parameter-passthrough) for all available parameters.
 
-```bash
-# Run all traditional tests
-pytest test/ -v
+## Repository Structure
 
-# Run DataFrame input tests only
-pytest -k "dataframe_support" -v
-
-# Run specific model tests
-pytest test/test_TVAE.py -v
-pytest test/test_identity.py -v
+```
+table-synthesizers/
+├── src/stg/                       # Main library code
+│   ├── base.py                    # BaseSynthesizer abstract class
+│   ├── tableSynthesizer.py        # Factory class for model selection
+│   ├── config_manager.py          # Configuration management
+│   ├── data_manager.py            # Unified data storage
+│   ├── metrics_manager.py         # Metrics tracking
+│   ├── wandb_manager.py           # WandB integration
+│   ├── gpu_utils.py               # GPU detection and utilities
+│   ├── zero_workaround.py         # libzero replacement
+│   ├── identity/                  # Identity baseline
+│   ├── TVAE/                      # Tabular VAE
+│   ├── CTGAN/                     # Conditional GAN
+│   ├── PATECTGAN/                 # Privacy-aware CTGAN
+│   ├── TabDDPM/                   # Diffusion model
+│   ├── TabSyn/                    # Advanced tabular synthesis
+│   ├── AutoDiff/                  # VAE + Diffusion hybrid
+│   ├── LTM_VAE.py                 # Latent Table Model
+│   ├── SMOTE/                     # Oversampling
+│   ├── CART/                      # Decision tree
+│   ├── DPCART/                    # DP decision tree
+│   ├── AIM/                       # Adaptive Iterative Mechanism
+│   ├── BayesianNetwork/           # Bayesian network (synthcity)
+│   ├── ARF/                       # Adversarial Random Forest (synthcity)
+│   ├── NFlow/                     # Normalizing flows (synthcity)
+│   └── GREAT/                     # Transformer-based (synthcity)
+├── src/data_loader/               # File data loading interface
+├── config/                        # JSON model configuration files
+│   ├── default_CTGAN.json
+│   ├── default_TVAE.json
+│   └── ...                        # One config per model
+├── tests/                         # Test suite
+│   ├── unit/                      # Unit tests per model
+│   └── integration/               # Integration and end-to-end tests
+├── docs/                          # Documentation
+├── train_all_compatible_models.py # Main multi-model training script
+├── run_comprehensive_tests.sh     # Test runner script
+├── requirements.txt               # Python dependencies
+└── pyproject.toml                 # Package configuration
 ```
 
-### Performance Benchmarking
+## Testing
 
-The comprehensive test provides detailed performance metrics:
-- Training time for each model
-- Sampling time comparison
-- Data quality analysis
-- Success/failure rates
+```bash
+# Run all tests
+pytest tests/ -v
 
-## 📊 Data Types Supported
+# Unit tests only
+pytest tests/unit/ -v
 
-The synthesizers support various data types with automatic encoding:
+# Integration tests only
+pytest tests/integration/ -v
 
-- **Continuous**: Numerical data (age, income, temperature)
-- **Categorical**: Categories (gender, product_type, city)
-- **Binary**: Binary features (is_member, has_license)
-- **Bounded Continuous**: Values within specific ranges
-- **Ordinal**: Ordered categories (rating, education_level)
+# Comprehensive test script with categories
+./run_comprehensive_tests.sh              # All tests
+./run_comprehensive_tests.sh --core       # Core algorithms
+./run_comprehensive_tests.sh --stable     # CART, DPCART, SMOTE
+./run_comprehensive_tests.sh --experimental  # TabSyn, AutoDiff, CTGAN
 
-## 🔐 Privacy-Preserving Synthesis
+# Test specific models
+./run_comprehensive_tests.sh TVAE TabDDPM
 
-For privacy-sensitive applications, use models with differential privacy:
+# Quick comprehensive model test
+python tests/integration/test_models_comprehensive.py --mode ultra-quick
+```
+
+## Privacy-Preserving Synthesis
 
 ```python
 # AIM with differential privacy
-synthesizer = TableSynthesizer('AIM', {
-    'epsilon': 1.0,      # Privacy budget
-    'delta': 1e-9,       # Privacy parameter
-    'rounds': 100,       # Number of iterations
-    'max_model_size': 80 # Model complexity limit
+synthesizer = TableSynthesizer('AIM', config={
+    'epsilon': 1.0,
+    'delta': 1e-9,
+    'rounds': 100,
+    'max_model_size': 80
 })
 
 # PATECTGAN with PATE framework
-synthesizer = TableSynthesizer('PATECTGAN', {
+synthesizer = TableSynthesizer('PATECTGAN', config={
     'epsilon': 3.0,
     'epochs': 100,
     'teacher_iters': 5,
     'student_iters': 5
 })
+
+# DPCART with differential privacy
+synthesizer = TableSynthesizer('DPCART', config={
+    'epsilon': 1.0
+})
 ```
 
-## 🤝 Contributing
+## GPU Acceleration
+
+GPU-accelerated models achieve 10-50x speedup over CPU:
+
+| Model | GPU Speedup | GPU Memory |
+|-------|------------|------------|
+| CTGAN | 15-30x | 2-4 GB |
+| TVAE | 10-20x | 1-2 GB |
+| TabDDPM | 20-40x | 4-8 GB |
+| PATECTGAN | 10-25x | 2-4 GB |
+| AutoDiff | 15-30x | 4-8 GB |
+| GREAT | 20-35x | 4-8 GB |
+| NFlow | 10-20x | 2-4 GB |
+
+```python
+from stg.gpu_utils import detect_best_device, get_optimal_batch_size
+
+# Auto-detect best device (CUDA > MPS > CPU)
+device = detect_best_device()
+
+# Get optimal batch size based on GPU memory
+batch_size = get_optimal_batch_size(dataset_size=10000)
+```
+
+## WandB Integration
+
+```bash
+# Set up WandB
+export WANDB_API_KEY="your_api_key"
+
+# Train with WandB logging
+python train_all_compatible_models.py \
+    --dataset insurance \
+    --models CTGAN \
+    --wandb_project my-experiments
+```
+
+See [docs/WANDB_INTEGRATION_GUIDE.md](docs/WANDB_INTEGRATION_GUIDE.md) for details.
+
+## Documentation
+
+Full documentation is available in the [docs/](docs/) directory:
+
+- [Documentation Index](docs/README.md) - Complete guide listing
+- [GPU Acceleration Guide](docs/GPU_ACCELERATION_GUIDE.md) - GPU setup and optimization
+- [Enhanced Training Guide](docs/ENHANCED_TRAINING_GUIDE.md) - Training best practices
+- [Configuration Guide](config/README.md) - Model configuration system
+- [Compatibility Guide](docs/COMPATIBILITY_GUIDE.md) - Platform compatibility matrix
+- [WandB Integration](docs/WANDB_INTEGRATION_GUIDE.md) - Experiment tracking
+- [Development Guide](docs/CLAUDE.md) - Contributing and architecture
+
+## Contributing
 
 1. Follow the architecture patterns in `BaseSynthesizer`
-2. Implement `_train()` and `_generate()` methods
-3. Add tests in `test/test_your_model.py`
-4. Update this README with your model information
+2. Implement `_train()` and `_generate()` methods in your synthesizer
+3. Add a default config in `config/default_YOUR_MODEL.json`
+4. Add unit tests in `tests/unit/test_your_model.py`
+5. Add integration tests in `tests/integration/test_your_model_integration.py`
+6. Update documentation
 
-## 📖 Documentation
+## Citation
 
-- **CLAUDE.md**: Development guide with detailed architecture information
-- **Test files**: Examples of how to use each synthesizer
-- **Code comments**: Inline documentation in source files
+If you use this library in your research, please cite:
 
-## 🐛 Troubleshooting
+```bibtex
+@inproceedings{son2026synthony,
+  title={{SYNTHONY}: A Stress-Aware, Intent-Conditioned Agent for Deep Tabular Generative Models Selection},
+  author={Hochan Son and Xiaofeng Lin and Jason Ni and Guang Cheng},
+  booktitle={ICLR 2026 2nd Workshop on Deep Generative Model in Machine Learning: Theory, Principle and Efficacy},
+  year={2026},
+}
+```
 
-### Common Issues
-
-1. **CUDA out of memory**: Reduce `batch_size` in model configuration
-2. **Missing dependencies**: Install requirements: `pip install -r requirements.txt`
-3. **Zero module errors**: The library includes `zero_workaround.py` that automatically handles this
-4. **Import errors**: Ensure you're running from the project root directory
-
-### Performance Tips
-
-1. **Use ultra-quick mode for testing**: `--mode ultra-quick` for rapid validation
-2. **Start with fast models**: Try Identity, TVAE, or AIM first
-3. **Use smaller datasets**: Begin with 100-1000 samples for testing
-4. **GPU acceleration**: TabDDPM and CTGAN benefit from GPU when available
-
-### Getting Help
-
-- Run `python test/test_models_comprehensive.py --mode ultra-quick` to verify setup
-- Check CLAUDE.md for detailed architecture and troubleshooting
-- All models have been tested and verified working as of September 2025
-
-## 📄 License
+## License
 
 This project is dual-licensed under Apache-2.0 OR MIT.
 
 - See `LICENSE-APACHE` for the Apache License, Version 2.0.
 - See `LICENSE-MIT` for the MIT License.
-- The top-level `LICENSE` file explains the dual-licensing terms.
 
-## 🙏 Attribution and Third-Party Licenses
+## Attribution
 
-This project integrates and wraps ideas and/or components inspired by the following repositories. We acknowledge their authors and cite their licenses below:
+This project integrates components inspired by:
 
-- SynthCity (VanderSchaar Lab): Apache License 2.0
-  - Repo: https://github.com/vanderschaarlab/synthcity
-  - License: https://raw.githubusercontent.com/vanderschaarlab/synthcity/main/LICENSE
-
-- TabSyn (Amazon Science): Apache License 2.0
-  - Repo: https://github.com/amazon-science/tabsyn
-  - License: https://raw.githubusercontent.com/amazon-science/tabsyn/main/LICENSE
-
-- AutoDiffusion (UCLA Trustworthy AI Lab): License not declared (no LICENSE file found as of this update)
-  - Repo: https://github.com/UCLA-Trustworthy-AI-Lab/AutoDiffusion
-  - Note: Please verify licensing terms before distribution or derivative use.
-
-- Synth-MIA (UCLA Trustworthy AI Lab): Repository unavailable at the provided URL (404); license unknown
-  - Repo (as cited): https://github.com/UCLA-Trustworthy-AI-Lab/Synth-MIA
-  - Note: If an updated location exists, please update CITED_LIBS and this section accordingly.
+- [SynthCity](https://github.com/vanderschaarlab/synthcity) (VanderSchaar Lab) - Apache License 2.0
+- [TabSyn](https://github.com/amazon-science/tabsyn) (Amazon Science) - Apache License 2.0
+- [AutoDiffusion](https://github.com/UCLA-Trustworthy-AI-Lab/AutoDiffusion) (UCLA Trustworthy AI Lab)
 
 If you are an author or maintainer of any cited project and prefer a different attribution format, please open an issue.

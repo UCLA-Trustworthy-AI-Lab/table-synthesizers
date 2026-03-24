@@ -1,1 +1,1 @@
-from .AIM import AIM
+from .AIM import AIM, AIM_AVAILABLE

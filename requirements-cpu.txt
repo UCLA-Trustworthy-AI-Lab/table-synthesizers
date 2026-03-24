@@ -1,0 +1,25 @@
+# =============================================================================
+# CPU Requirements - General purpose CPU training
+# =============================================================================
+# Install:
+#   pip install -r requirements.txt
+#   pip install -r requirements-cpu.txt
+#
+# This provides: All GPU models running on CPU (CTGAN, TVAE, TabDDPM,
+#   PATECTGAN, AutoDiff, TabSyn, LTM_VAE) plus all base CPU models.
+#
+# NOTE: Install CPU-only torch:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# =============================================================================
+
+# PyTorch CPU-only (install via --index-url, not from PyPI)
+# pip install torch>=2.7.0 torchvision>=0.22.0 --index-url https://download.pytorch.org/whl/cpu
+torch>=2.7.0
+torchvision>=0.22.0
+
+# LTM (Latent Table Model) dependencies
+transformers>=4.0.0
+datasets>=2.0.0
+accelerate>=0.20.0
+ema-pytorch>=0.7.0
+boto3>=1.26.0

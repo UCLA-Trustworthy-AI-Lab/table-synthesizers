@@ -6,7 +6,6 @@ import torch
 from torch import optim
 import pandas as pd
 
-from torch import optim
 from torch.nn import functional
 
 import warnings
@@ -39,7 +38,7 @@ class CTGAN(BaseSynthesizer):
   """
   This model applies conditional generation and model-specific regularization to generated dataset with both categorical and continous columns. Implementation based on: https://github.com/sdv-dev/CTGAN/blob/main/ctgan/synthesizers/ctgan.py
   """
-  def __init__(self, data_info=None, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=10, pac=5,checkpoint_interval_seconds=None,**kwarg):
+  def __init__(self, data_info=None, embedding_dim=128, generator_dim=(256,256), discriminator_dim=(256,256), generator_lr=0.0002, generator_decay=0.000001, discriminator_lr=0.0002, discriminator_decay=0.000001, batch_size=150, discriminator_steps=1, verbose=True, epochs=100, pac=5, patience=15, min_epochs=10, checkpoint_interval_seconds=None,**kwarg):
     BaseSynthesizer.__init__(self, data_info=data_info, checkpoint_interval_seconds=checkpoint_interval_seconds, epochs=epochs, **kwarg)
     self.model_loaded = False
     self._epochs = epochs
@@ -70,6 +69,9 @@ class CTGAN(BaseSynthesizer):
     self._verbose = verbose
     self._epochs = epochs
     self.pac = pac
+
+    self._patience = patience
+    self._min_epochs = min_epochs
 
     self._data_sampler = None
     self._generator = None
@@ -111,7 +113,10 @@ class CTGAN(BaseSynthesizer):
     std = mean + 1
 
     steps_per_epoch = max(len(train_dataloader), 1)
-    torch.autograd.set_detect_anomaly(True)
+
+    # Early stopping state
+    best_loss_g = float('inf')
+    epochs_no_improve = 0
 
     for i in range(epochs):
         # Update the number of remaining epoch.
@@ -224,7 +229,21 @@ class CTGAN(BaseSynthesizer):
                 float(loss_g.detach().cpu()),
                 float(loss_d.detach().cpu()),
             )
-                      
+
+        # Early stopping on generator loss
+        current_loss_g = float(loss_g.detach().cpu())
+        if current_loss_g < best_loss_g:
+            best_loss_g = current_loss_g
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if (i + 1) >= self._min_epochs and epochs_no_improve >= self._patience:
+            self._logger.info(
+                'CTGAN early stopping at epoch %d (patience=%d, best_loss_g=%.4f)',
+                i + 1, self._patience, best_loss_g,
+            )
+            break
 
   def generate(self, n, condition_column=None, condition_value=None):
         """
@@ -294,7 +313,12 @@ class CTGAN(BaseSynthesizer):
         """Initialize data sampler, generator and synthesizers."""
         if self.model_loaded:
           return
-        
+
+        # Allow no-op initialization for checkpoint load flows in tests/callers
+        # that only need object scaffolding before `load_state`.
+        if train_dataloader is None:
+          return
+
         # Create transformer from data_info if needed
         if self._transformer is None and self.data_info is not None:
             self._transformer = TableTransformerInfo(self.data_info['transform_info'])
@@ -343,7 +367,10 @@ class CTGAN(BaseSynthesizer):
         
   def load_state(self, checkpoint):
       """Load state from checkpoint"""
-      state = torch.load(checkpoint)
+      state = torch.load(checkpoint, weights_only=False)
+
+      if not hasattr(self, '_device'):
+          self.set_device()
       
       data_dim = self._transformer.output_width
       
@@ -477,27 +504,16 @@ class CTGAN(BaseSynthesizer):
 
         return (loss * m).sum() / data.size()[0]
 
-  def fit(self, data):
-      """Fit method for sklearn-style interface."""
-      self.train(data)
-
-  def sample(self, n_samples, return_dataframe=False):
-      """Sample method for sklearn-style interface."""
-      synth_data = self.generate(n_samples)
-
-      if return_dataframe and hasattr(self, 'decode_samples'):
-          return self.decode_samples(synth_data)
-
-      return synth_data
-
   def decode_samples(self, samples):
     """Decode generated samples back to original DataFrame format"""
+    # If BaseSynthesizer's encoders are available, use them for proper decoding
+    if hasattr(self, 'encoders') and hasattr(self, 'feature_names') and self.encoders:
+        # Use BaseSynthesizer's decode_samples method
+        return BaseSynthesizer.decode_samples(self, samples)
+
+    # Fallback: return generic DataFrame
     if isinstance(samples, torch.Tensor):
         samples = samples.detach().cpu().numpy()
-
-    # CTGAN uses its own transformer system, so we need to handle decoding differently
-    # For now, return a basic DataFrame with generic column names
-    # This is a simplified approach - ideally we'd implement full CTGAN reverse transformation
 
     # Generate column names based on the number of features
     n_features = samples.shape[1]
