@@ -23,7 +23,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/ohsono/table-synthesizers-base
+  IMAGE: ghcr.io/${{ github.actor }}/table-synthesizers-base
 
 jobs:
   build-and-push:
