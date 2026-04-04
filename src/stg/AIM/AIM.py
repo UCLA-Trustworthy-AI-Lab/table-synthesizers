@@ -1,31 +1,3 @@
-<<<<<<< HEAD
-"""
-AIM (Adaptive and Iterative Mechanism) synthesizer for differentially private
-tabular data generation.
-
-Wraps SmartNoise's AIMSynthesizer, which implements the full AIM algorithm
-from McKenna et al. (2022): "AIM: An Adaptive and Iterative Mechanism for
-Differentially Private Synthetic Data" (VLDB 2023).
-
-The algorithm:
-  1. Iteratively selects the worst-approximated marginal query
-     via the exponential mechanism
-  2. Measures it with calibrated Gaussian noise (DP guarantee)
-  3. Updates a graphical model (PGM) via mirror descent inference
-  4. Repeats until the privacy budget is exhausted
-  5. Samples synthetic data from the final graphical model
-
-Dependencies:
-  - smartnoise-synth (pip install smartnoise-synth)
-  - private-pgm / mbi (pip install git+https://github.com/ryan112358/private-pgm.git@01f02f17)
-"""
-
-from __future__ import annotations
-
-import logging
-import time
-from typing import Dict, Optional
-=======
 """AIM synthesizer wrapper with optional real snsynth backend.
 
 This module prefers a real AIM implementation via ``snsynth`` when that package
@@ -37,7 +9,6 @@ import itertools
 import logging
 import time
 import warnings
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
 
 import numpy as np
 import pandas as pd
@@ -146,17 +117,6 @@ class SimpleModel:
     def cliques(self):
         return [tuple(self.synthetic_df.columns)]
 
-<<<<<<< HEAD
-class AIM(BaseSynthesizer):
-    """
-    Differentially private synthesizer using the AIM algorithm.
-
-    Wraps SmartNoise SDK's ``AIMSynthesizer``, which uses the ``mbi``
-    (private-pgm) library for graphical model inference.
-
-    Only supports discrete / categorical data. Continuous columns are
-    automatically discretized into bins before synthesis.
-=======
 
 class AIM(Mechanism, BaseSynthesizer):
     """
@@ -171,7 +131,6 @@ class AIM(Mechanism, BaseSynthesizer):
     Even with the snsynth backend enabled, this class trains on the encoded
     feature space produced by `BaseSynthesizer` so it remains compatible with
     the rest of this repository's tensor-based interfaces.
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
     """
 
     def __init__(
@@ -192,19 +151,6 @@ class AIM(Mechanism, BaseSynthesizer):
         bounded=True,
         checkpoint_interval_seconds=30,
         epochs=None,
-<<<<<<< HEAD
-        **kwargs,
-    ):
-        if not AIM_AVAILABLE:
-            raise ImportError(
-                "AIM requires smartnoise-synth and private-pgm. Install with:\n"
-                "  pip install smartnoise-synth\n"
-                "  pip install git+https://github.com/ryan112358/private-pgm.git"
-                "@01f02f17eba440f4e76c1d06fa5ee9eed0bd2bca"
-            )
-
-        super().__init__(
-=======
         continuous_binning="uniform",
         continuous_bin_count=None,
         continuous_min_bins=10,
@@ -223,7 +169,6 @@ class AIM(Mechanism, BaseSynthesizer):
         Mechanism.__init__(self, epsilon, delta, bounded, prng)
         BaseSynthesizer.__init__(
             self,
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
             data_info=data_info,
             checkpoint_interval_seconds=checkpoint_interval_seconds,
             epochs=epochs or 1,
@@ -239,21 +184,6 @@ class AIM(Mechanism, BaseSynthesizer):
         self.rounds = rounds
         self.preprocessor_eps = preprocessor_eps
         self.n_bins = n_bins
-<<<<<<< HEAD
-        self.prng = prng if prng is not None else np.random
-
-        # State
-        self._aim_synth = None  # SmartNoise AIMSynthesizer instance
-        self.stored_data: Optional[pd.DataFrame] = None
-        self._column_names = []
-        self._dtypes: Dict[str, np.dtype] = {}
-        self.model = None  # kept for checkpoint compat
-        self.model_loaded = False
-
-    # ------------------------------------------------------------------
-    # Training
-    # ------------------------------------------------------------------
-=======
         self.max_iters = max_iters
         self.structural_zeros = structural_zeros or {}
         self.continuous_binning = continuous_binning
@@ -276,7 +206,6 @@ class AIM(Mechanism, BaseSynthesizer):
         self._validate_binning_configuration()
         if self.backend == "baseline":
             self._warn_baseline_implementation()
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
 
     def fit(self, data, batch_size=32):
         self.train(data, batch_size)
@@ -331,7 +260,6 @@ class AIM(Mechanism, BaseSynthesizer):
         try:
             self._aim_synth.fit(train_df, preprocessor_eps=self.preprocessor_eps)
         except TypeError:
-            # Some snsynth versions expose a slightly different fit signature.
             self._aim_synth.fit(train_df)
 
         self.model = self._aim_synth
@@ -340,10 +268,6 @@ class AIM(Mechanism, BaseSynthesizer):
 
         logger.info("snsynth AIM training completed in %.2fs", time.time() - st)
 
-<<<<<<< HEAD
-    def _train(self, train_dataloader):
-        """Handle DataLoader input by converting to DataFrame first."""
-=======
     def _train_with_baseline(self, train_dataloader):
         """Train the fallback Laplace-noise baseline."""
         st = time.time()
@@ -364,7 +288,6 @@ class AIM(Mechanism, BaseSynthesizer):
         logger.info("AIM compatibility baseline training completed in %.2fs", time.time() - st)
 
     def _dataloader_to_dataframe(self, train_dataloader):
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
         all_data = []
         for batch in train_dataloader:
             if isinstance(batch, (list, tuple)):
@@ -419,19 +342,6 @@ class AIM(Mechanism, BaseSynthesizer):
 
     def get_state(self):
         return {
-<<<<<<< HEAD
-            "stored_data": self.stored_data,
-            "column_names": self._column_names,
-            "dtypes": {k: str(v) for k, v in self._dtypes.items()},
-            "epsilon": self.epsilon,
-            "delta": self.delta,
-            "max_model_size": self.max_model_size,
-            "degree": self.degree,
-            "num_marginals": self.num_marginals,
-            "max_cells": self.max_cells,
-            "rounds": self.rounds,
-            "preprocessor_eps": self.preprocessor_eps,
-=======
             "model": self.model,
             "backend": self.backend,
             "backend_preference": self.backend_preference,
@@ -446,7 +356,6 @@ class AIM(Mechanism, BaseSynthesizer):
             "continuous_max_bins": self.continuous_max_bins,
             "sample_columns": self._sample_columns,
             "implementation": "snsynth_aim" if self.backend == "snsynth" else "laplace_noise_baseline",
->>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
         }
 
     def load_state(self, checkpoint):
