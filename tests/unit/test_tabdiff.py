@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from stg.TabDiff.tabdiff_synthesizer import TabDiffSynthesizer
 
@@ -14,8 +15,8 @@ def test_tabdiff_initialization():
 
 def test_tabdiff_default_hyperparams():
     model = TabDiffSynthesizer()
-    assert model.num_diffusion_steps == 50
-    assert model._epochs == 8000
+    assert model.num_diffusion_steps == 1000
+    assert model._epochs == 1000
     assert model._lr == 1e-3
     assert model.hidden_dims == (256, 256, 256)
 
@@ -48,8 +49,7 @@ def test_tabdiff_fit_and_sample(sample_data):
 
 def test_tabdiff_edit(sample_data):
     model = TabDiffSynthesizer(epochs=1, random_state=42)
-    
-  
+    model.fit(sample_data)
 
     row = sample_data.iloc[[0]].copy()
     row["feature1"] = np.nan

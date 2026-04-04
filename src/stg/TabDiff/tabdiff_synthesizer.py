@@ -159,6 +159,7 @@ class TabDiffSynthesizer(BaseSynthesizer):
 
         # State populated during training
         self.stored_data: Optional[pd.DataFrame] = None
+        self._column_order: list[str] = []
         self.original_dtypes: Optional[pd.Series] = None
         self.numeric_cols: list[str] = []
         self.categorical_cols: list[str] = []
@@ -200,6 +201,7 @@ class TabDiffSynthesizer(BaseSynthesizer):
         self.set_device()
 
         self.stored_data = train_data.copy()
+        self._column_order = self.stored_data.columns.tolist()
         self.original_dtypes = self.stored_data.dtypes.copy()
 
         # Identify column types
@@ -400,7 +402,10 @@ class TabDiffSynthesizer(BaseSynthesizer):
             offset += k
 
         # Reorder columns to match original
-        df = df[list(self.stored_data.columns)]
+        if self._column_order:
+            df = df[self._column_order]
+        elif self.stored_data is not None:
+            df = df[list(self.stored_data.columns)]
 
         # Cast dtypes back
         for col in df.columns:
@@ -494,6 +499,8 @@ class TabDiffSynthesizer(BaseSynthesizer):
             return self._last_generated_df
         if self.stored_data is not None:
             return pd.DataFrame(tensor_samples.numpy(), columns=self.stored_data.columns)
+        if self._column_order:
+            return pd.DataFrame(tensor_samples.numpy(), columns=self._column_order)
         return pd.DataFrame(tensor_samples.numpy())
 
     def edit(self, x_row_df, intervention: dict, meta=None, n_samples=1):
@@ -531,11 +538,18 @@ class TabDiffSynthesizer(BaseSynthesizer):
             "num_means": self._num_means,
             "num_stds": self._num_stds,
             "original_dtypes": self.original_dtypes,
+            "column_order": self._column_order,
+            "num_diffusion_steps": self.num_diffusion_steps,
+            "hidden_dims": self.hidden_dims,
+            "time_emb_dim": self.time_emb_dim,
         }
         return state
 
     def load_state(self, checkpoint):
         state = torch.load(checkpoint, weights_only=False) if isinstance(checkpoint, str) else checkpoint
+        self.num_diffusion_steps = state.get("num_diffusion_steps", self.num_diffusion_steps)
+        self.hidden_dims = tuple(state.get("hidden_dims", self.hidden_dims))
+        self.time_emb_dim = state.get("time_emb_dim", self.time_emb_dim)
         self._x_dim = state["x_dim"]
         self._num_dim = state["num_dim"]
         self._cat_dim = state["cat_dim"]
@@ -545,6 +559,8 @@ class TabDiffSynthesizer(BaseSynthesizer):
         self._num_means = state["num_means"]
         self._num_stds = state["num_stds"]
         self.original_dtypes = state["original_dtypes"]
+        self._column_order = state.get("column_order", [])
+        self.stored_data = pd.DataFrame(columns=self._column_order) if self._column_order else None
         self._model = MLPDenoiser(self._x_dim, self.hidden_dims, self.time_emb_dim)
         self._model.load_state_dict(state["model_state"])
         self._model.eval()

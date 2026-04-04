@@ -465,6 +465,7 @@ class AIM(Mechanism, BaseSynthesizer):
         """Decode generated samples back to the original DataFrame schema."""
         encoded_df = self._restore_encoded_feature_space(samples)
         if self.encoders and self.feature_names and list(encoded_df.columns) == list(self.feature_names):
+            encoded_df = self._coerce_encoded_dataframe_for_decode(encoded_df)
             return BaseSynthesizer.decode_samples(self, encoded_df[self.feature_names].to_numpy())
         return encoded_df
 
@@ -509,6 +510,29 @@ class AIM(Mechanism, BaseSynthesizer):
                 restored_df[col] = midpoints[codes]
 
         return restored_df
+
+    def _coerce_encoded_dataframe_for_decode(self, encoded_df):
+        """Normalize encoded feature blocks before delegating to the base decoder."""
+        normalized_df = encoded_df.copy()
+
+        for original_col, encoder_info in self.encoders.items():
+            if encoder_info["type"] == "minmax":
+                scaled_col = f"{original_col}_scaled"
+                if scaled_col in normalized_df.columns:
+                    normalized_df[scaled_col] = normalized_df[scaled_col].clip(0.0, 1.0)
+            elif encoder_info["type"] == "onehot":
+                encoder = encoder_info["encoder"]
+                feature_names = list(encoder.get_feature_names_out([original_col]))
+                if not feature_names or not all(name in normalized_df.columns for name in feature_names):
+                    continue
+
+                values = normalized_df[feature_names].to_numpy(dtype=float, copy=True)
+                winner_idx = np.argmax(values, axis=1)
+                coerced = np.zeros_like(values)
+                coerced[np.arange(len(winner_idx)), winner_idx] = 1.0
+                normalized_df.loc[:, feature_names] = coerced
+
+        return normalized_df
 
     def _validate_binning_configuration(self):
         valid_strategies = {"uniform", "quantile"}
