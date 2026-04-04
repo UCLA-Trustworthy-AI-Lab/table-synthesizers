@@ -12,9 +12,9 @@ from .PATECTGAN import PATECTGAN
 try:
     from .AIM import AIM
     AIM_AVAILABLE = True
-except ImportError:
+except Exception as e:
     AIM_AVAILABLE = False
-    logging.getLogger(__name__).warning("AIM not available due to missing dependencies")
+    logging.getLogger(__name__).warning("AIM not available due to dependencies: %s", str(e))
 from .TVAE import TVAE
 
 # New synthesizers that only support DataFrame input

@@ -187,21 +187,11 @@ class AIM(BaseSynthesizer):
         self.train(data, batch_size)
 
     def sample(self, n, return_dataframe=False):
-        """Public sample method that calls the base class generate method."""
+        """Generate samples and optionally decode them back to a DataFrame."""
         samples = self.generate(n)
         if return_dataframe:
-            # Use BaseSynthesizer's decode_samples if encoders are available
-            if hasattr(self, 'encoders') and hasattr(self, 'feature_names') and self.encoders:
-                return self.decode_samples(samples)
-
-            # Fallback: Convert tensor to DataFrame with generic names
-            if isinstance(samples, torch.Tensor):
-                num_cols = samples.shape[1]
-                columns = [f'col_{i}' for i in range(num_cols)]
-                return pd.DataFrame(samples.detach().cpu().numpy(), columns=columns)
-            return samples
-        else:
-            return samples
+            return self.decode_samples(samples)
+        return samples
 
         self.start_threading()
         st = time.time()
@@ -246,9 +236,13 @@ class AIM(BaseSynthesizer):
 
         train_data = np.concatenate(all_data, axis=0)
         
-        # Convert to DataFrame with proper column names
+        # Preserve encoded feature names when they are available so decoding and
+        # checkpoint restoration can reconstruct the original schema.
         num_cols = train_data.shape[1]
-        columns = [f'col_{i}' for i in range(num_cols)]
+        if self.feature_names and len(self.feature_names) == num_cols:
+            columns = self.feature_names
+        else:
+            columns = [f'col_{i}' for i in range(num_cols)]
         train_df = pd.DataFrame(train_data, columns=columns)
 
         print("Data preparation completed")
@@ -256,18 +250,26 @@ class AIM(BaseSynthesizer):
         # Convert data to AIM format
         data, workload = self.prepare_parameters(train_df)
 
-        # Run simplified AIM algorithm
-        self.model, self.synthetic_data = self.run_simple_aim(data, workload, train_df.shape[0])
+        # Run the implemented baseline. This is intentionally named separately
+        # from the published AIM algorithm to avoid overstating its behavior.
+        self.model, self.synthetic_data = self.run_laplace_baseline(data, workload, train_df.shape[0])
 
         ed = time.time()
         print("AIM training completed in:", ed - st, "seconds")
 
-    def run_simple_aim(self, data, workload, n_samples):
-        """Simplified AIM algorithm that doesn't require complex mbi internals"""
-        print("Running simplified AIM algorithm...")
+    def run_laplace_baseline(self, data, workload, n_samples):
+        """Run the implemented Laplace-noise baseline.
+
+        Unlike the real AIM algorithm, this method does not measure selected
+        marginals and fit a model to them. It perturbs discretized records
+        directly and resamples from the resulting noisy table.
+        """
+        print("Running Laplace-noise AIM baseline...")
         
-        # For simplicity, we'll just add noise to the data and return it
-        # This is not the full AIM algorithm but provides a working baseline
+        # `workload` and `n_samples` are unused in this baseline implementation,
+        # but kept in the signature for compatibility with the higher-level API.
+        _ = workload
+        _ = n_samples
         
         # Add Laplace noise for differential privacy
         noise_scale = 1.0 / self.epsilon
@@ -280,7 +282,7 @@ class AIM(BaseSynthesizer):
             noisy_data[:, i] = np.round(noisy_data[:, i])
         
         # Create synthetic data
-        synthetic_df = pd.DataFrame(noisy_data, columns=data.df.columns)
+        synthetic_df = pd.DataFrame(noisy_data.astype(np.int64), columns=data.df.columns)
         
 
         
@@ -288,6 +290,10 @@ class AIM(BaseSynthesizer):
         synth = model.synthetic_data()
         
         return model, synth
+
+    def run_simple_aim(self, data, workload, n_samples):
+        """Backward-compatible alias for the implemented baseline."""
+        return self.run_laplace_baseline(data, workload, n_samples)
 
     def _generate(self, n, condition=None):
         if self._aim_synth is None:
@@ -353,6 +359,16 @@ class AIM(BaseSynthesizer):
     def load_state(self, checkpoint):
         state = torch.load(checkpoint, weights_only=False)
         self.model = state['model']
+        self.encoders = state.get('encoders', {})
+        self.feature_names = state.get('feature_names', [])
+        self.column_info = state.get('column_info', {})
+        self.data_info = state.get('data_info', self.data_info)
+        self._discretization_info = state.get('discretization_info', {})
+        self.continuous_binning = state.get('continuous_binning', self.continuous_binning)
+        self.continuous_bin_count = state.get('continuous_bin_count', self.continuous_bin_count)
+        self.continuous_min_bins = state.get('continuous_min_bins', self.continuous_min_bins)
+        self.continuous_max_bins = state.get('continuous_max_bins', self.continuous_max_bins)
+        self.synthetic_data = self.model.synthetic_data() if self.model is not None else None
         self.model_loaded = True
 
     # ------------------------------------------------------------------
@@ -375,22 +391,24 @@ class AIM(BaseSynthesizer):
         return params
 
     def infer_domain(self, df):
-        """Infer domain automatically based on input data"""
+        """Infer discrete domain sizes for the baseline discretization step."""
         domain = {}
         print("Inferring domain for AIM!")
         
         for col in df.columns:
-            # Get unique values and determine domain size
-            unique_vals = df[col].unique()
-            min_val = df[col].min()
-            max_val = df[col].max()
+            series = df[col].dropna()
+            if series.empty:
+                domain[col] = 2
+                continue
             
             # For integer-like columns, use the range
-            if np.all(df[col] == df[col].astype(int)):
-                domain[col] = max(2, int(max_val) + 1)
+            if self._is_integer_valued(series):
+                min_val = int(np.floor(series.min()))
+                max_val = int(np.ceil(series.max()))
+                domain[col] = max(2, max_val - min_val + 1)
             else:
-                # For continuous, discretize into bins
-                domain[col] = min(100, max(10, len(unique_vals)))
+                unique_count = int(series.nunique(dropna=True))
+                domain[col] = self._resolve_continuous_bin_count(unique_count)
 
         return domain
 
@@ -402,13 +420,31 @@ class AIM(BaseSynthesizer):
         
         # Ensure data is integer-valued for AIM
         train_data = train_data.copy()
+        self._discretization_info = {}
         for col in train_data.columns:
-            if not np.all(train_data[col] == train_data[col].astype(int)):
-                # Discretize continuous columns
-                train_data[col] = pd.cut(train_data[col], bins=domain_dict[col], labels=False, duplicates='drop')
-                train_data[col] = train_data[col].fillna(0).astype(int)
+            series = train_data[col]
+            if self._is_integer_valued(series):
+                non_null = series.dropna()
+                min_val = int(np.floor(non_null.min())) if not non_null.empty else 0
+                shifted = series.fillna(min_val).astype(float).round().astype(int) - min_val
+                train_data[col] = shifted
+                domain_dict[col] = max(2, int(shifted.max()) + 1 if len(shifted) else 2)
+                self._discretization_info[col] = {
+                    'kind': 'discrete',
+                    'offset': min_val,
+                }
             else:
-                train_data[col] = train_data[col].astype(int)
+                discretized, bin_edges = self._discretize_continuous_column(
+                    series,
+                    domain_dict[col],
+                )
+                train_data[col] = discretized
+                domain_dict[col] = max(2, int(discretized.max()) + 1 if len(discretized) else 2)
+                self._discretization_info[col] = {
+                    'kind': 'binned',
+                    'bin_edges': bin_edges.tolist(),
+                    'strategy': self.continuous_binning,
+                }
         
         # Create Dataset
         data = SimpleDataset(train_data, domain_dict)
@@ -421,3 +457,126 @@ class AIM(BaseSynthesizer):
 
         workload = [(cl, 1.0) for cl in workload]
         return data, workload
+
+    def decode_samples(self, samples):
+        """Decode baseline samples back to the original DataFrame schema."""
+        encoded_df = self._restore_encoded_feature_space(samples)
+        if self.encoders and self.feature_names and list(encoded_df.columns) == list(self.feature_names):
+            return BaseSynthesizer.decode_samples(self, encoded_df[self.feature_names].to_numpy())
+        return encoded_df
+
+    def _restore_encoded_feature_space(self, samples):
+        if isinstance(samples, torch.Tensor):
+            samples = samples.detach().cpu().numpy()
+
+        if self.feature_names and samples.shape[1] == len(self.feature_names):
+            columns = self.feature_names
+        elif self.model is not None and hasattr(self.model, 'synthetic_df'):
+            columns = list(self.model.synthetic_df.columns)
+        else:
+            columns = [f'col_{i}' for i in range(samples.shape[1])]
+
+        encoded_df = pd.DataFrame(samples, columns=columns)
+        restored_df = encoded_df.copy()
+        domain_dict = getattr(self.model, 'domain_dict', {}) if self.model is not None else {}
+
+        for col in restored_df.columns:
+            info = self._discretization_info.get(col)
+            if not info:
+                continue
+
+            codes = np.rint(restored_df[col].to_numpy()).astype(int)
+
+            if info['kind'] == 'discrete':
+                upper = max(0, int(domain_dict.get(col, codes.max() + 1 if len(codes) else 1)) - 1)
+                codes = np.clip(codes, 0, upper)
+                restored_df[col] = codes + info.get('offset', 0)
+            elif info['kind'] == 'binned':
+                edges = np.asarray(info.get('bin_edges', []), dtype=float)
+                if edges.size < 2:
+                    restored_df[col] = 0.0
+                    continue
+                midpoints = (edges[:-1] + edges[1:]) / 2.0
+                codes = np.clip(codes, 0, len(midpoints) - 1)
+                restored_df[col] = midpoints[codes]
+
+        return restored_df
+
+    def _validate_binning_configuration(self):
+        valid_strategies = {'uniform', 'quantile'}
+        if self.continuous_binning not in valid_strategies:
+            raise ValueError(
+                f"continuous_binning must be one of {sorted(valid_strategies)}, "
+                f"got {self.continuous_binning!r}"
+            )
+        if self.continuous_bin_count is not None and self.continuous_bin_count < 2:
+            raise ValueError("continuous_bin_count must be at least 2 when provided")
+        if self.continuous_min_bins < 2:
+            raise ValueError("continuous_min_bins must be at least 2")
+        if self.continuous_max_bins < self.continuous_min_bins:
+            raise ValueError("continuous_max_bins must be greater than or equal to continuous_min_bins")
+
+    def _warn_baseline_implementation(self):
+        global _AIM_BASELINE_WARNING_EMITTED
+        if _AIM_BASELINE_WARNING_EMITTED:
+            return
+
+        warnings.warn(
+            "stg.AIM.AIM currently uses a Laplace-noise baseline rather than "
+            "the full AIM marginal-selection and model-fitting algorithm.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        _AIM_BASELINE_WARNING_EMITTED = True
+
+    def _is_integer_valued(self, series):
+        non_null = series.dropna()
+        if non_null.empty:
+            return True
+
+        values = non_null.to_numpy(dtype=float, copy=False)
+        if not np.all(np.isfinite(values)):
+            return False
+        return np.allclose(values, np.round(values))
+
+    def _resolve_continuous_bin_count(self, unique_count):
+        if self.continuous_bin_count is not None:
+            return int(self.continuous_bin_count)
+
+        bounded_unique = max(2, int(unique_count))
+        return max(
+            self.continuous_min_bins,
+            min(self.continuous_max_bins, bounded_unique),
+        )
+
+    def _discretize_continuous_column(self, series, num_bins):
+        num_bins = max(2, int(num_bins))
+        unique_count = max(2, int(series.nunique(dropna=True)))
+        effective_bins = min(num_bins, unique_count)
+
+        if self.continuous_binning == 'quantile':
+            codes, edges = pd.qcut(
+                series,
+                q=effective_bins,
+                labels=False,
+                retbins=True,
+                duplicates='drop',
+            )
+        else:
+            codes, edges = pd.cut(
+                series,
+                bins=effective_bins,
+                labels=False,
+                retbins=True,
+                duplicates='drop',
+            )
+
+        codes = pd.Series(codes, index=series.index).fillna(0).astype(int)
+        edges = np.asarray(edges, dtype=float)
+
+        if edges.size < 2:
+            fill_value = float(series.dropna().iloc[0]) if not series.dropna().empty else 0.0
+            edges = np.asarray([fill_value - 0.5, fill_value + 0.5], dtype=float)
+            codes = pd.Series(np.zeros(len(series), dtype=int), index=series.index)
+
+        return codes, edges

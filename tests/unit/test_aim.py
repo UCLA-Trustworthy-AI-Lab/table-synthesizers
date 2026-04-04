@@ -28,6 +28,18 @@ def test_aim_fit_and_sample(sample_categorical_data):
     # Since AIM is for discrete data, verify output is somewhat discrete or reasonable
     # For now, just checking shape and type is good enough for a basic test.
 
+def test_aim_fit_and_sample_mixed_data(sample_data):
+    """Mixed-type sampling should decode back to the original column schema."""
+    model = AIM(epsilon=1.0, epochs=1, continuous_binning="quantile", continuous_bin_count=16)
+
+    model.fit(sample_data)
+    samples = model.sample(10, return_dataframe=True)
+
+    assert isinstance(samples, pd.DataFrame)
+    assert samples.shape == (10, sample_data.shape[1])
+    assert list(samples.columns) == list(sample_data.columns)
+    assert set(samples["target"].unique()).issubset(set(sample_data["target"].unique()))
+
 def test_aim_save_load(sample_categorical_data, tmp_path):
     """Test saving and loading the AIM model."""
     model = AIM(epsilon=1.0, epochs=1)
@@ -49,3 +61,20 @@ def test_aim_save_load(sample_categorical_data, tmp_path):
     # Can we sample from loaded model?
     samples = new_model.sample(5, return_dataframe=True)
     assert len(samples) == 5
+
+def test_aim_save_load_preserves_decoder_metadata(sample_data, tmp_path):
+    """Checkpoints should retain enough metadata to decode mixed-type samples."""
+    model = AIM(epsilon=1.0, epochs=1, continuous_bin_count=8)
+    model.fit(sample_data)
+
+    save_path = tmp_path / "aim_mixed_checkpoint.pt"
+    torch.save(model.get_state(), save_path)
+
+    restored_model = AIM(epsilon=1.0)
+    restored_model.load_state(save_path)
+
+    restored_samples = restored_model.sample(6, return_dataframe=True)
+
+    assert isinstance(restored_samples, pd.DataFrame)
+    assert restored_samples.shape == (6, sample_data.shape[1])
+    assert list(restored_samples.columns) == list(sample_data.columns)
