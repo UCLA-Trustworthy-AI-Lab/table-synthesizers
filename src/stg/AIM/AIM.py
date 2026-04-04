@@ -112,7 +112,7 @@ class SimpleModel:
     def cliques(self):
         return [tuple(self.synthetic_df.columns)]
 
-class AIM(Mechanism, BaseSynthesizer):
+class AIM(BaseSynthesizer):
     """
     Differentially private synthesizer using the AIM algorithm.
 

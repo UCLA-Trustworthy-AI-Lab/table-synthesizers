@@ -8,7 +8,7 @@ from stg.AIM.AIM import AIM
 
 def test_aim_initialization():
     """Test that AIM can be initialized."""
-    model = AIM(epsilon=0.5)
+    model = AIM(mach,epsilon=0.5)
     assert model.epsilon == 0.5
 
 def test_aim_fit_and_sample(sample_categorical_data):
