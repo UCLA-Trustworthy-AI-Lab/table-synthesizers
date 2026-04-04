@@ -1,6 +1,9 @@
 # Ignore all __pycache__ directories
 __pycache__/
 
+# Official TabDiff repo clone (fetched at setup time)
+src/stg/TabDiff/TabDiff_repo/
+
 # Alternatively, you can use this pattern which also ignores all files with a .pyc extension
 *.py[cod]
 
@@ -24,6 +27,9 @@ dataset/
 
 # checkpoints
 checkpoints/
+
+# api_key.json
+api_key.json
 
 # Output training datasets
 outputs/

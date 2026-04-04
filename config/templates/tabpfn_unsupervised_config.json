@@ -1,0 +1,7 @@
+{
+    "model": "TabPFNUnsupervised",
+    "N": 1000,
+    "t": 1.0,
+    "n_permutations": 3,
+    "device": "auto"
+}

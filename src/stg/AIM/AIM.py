@@ -1,35 +1,44 @@
-"""CLI."""
-import numpy as np
-import torch
-import pandas as pd
-import warnings
+"""
+AIM (Adaptive and Iterative Mechanism) synthesizer for differentially private
+tabular data generation.
+
+Wraps SmartNoise's AIMSynthesizer, which implements the full AIM algorithm
+from McKenna et al. (2022): "AIM: An Adaptive and Iterative Mechanism for
+Differentially Private Synthetic Data" (VLDB 2023).
+
+The algorithm:
+  1. Iteratively selects the worst-approximated marginal query
+     via the exponential mechanism
+  2. Measures it with calibrated Gaussian noise (DP guarantee)
+  3. Updates a graphical model (PGM) via mirror descent inference
+  4. Repeats until the privacy budget is exhausted
+  5. Samples synthetic data from the final graphical model
+
+Dependencies:
+  - smartnoise-synth (pip install smartnoise-synth)
+  - private-pgm / mbi (pip install git+https://github.com/ryan112358/private-pgm.git@01f02f17)
+"""
+
+from __future__ import annotations
+
+import logging
 import time
-import json
-from scipy.optimize import bisect
-import itertools
-import argparse
-from collections import defaultdict
-import sys
-import os
+from typing import Dict, Optional
 
-# Simplified AIM implementation - no complex mbi dependencies needed
-AIM_MBI_AVAILABLE = False
-
-# Simple Mechanism base class
-class Mechanism:
-    def __init__(self, epsilon, delta, bounded, prng):
-        self.epsilon = epsilon
-        self.delta = delta
-        self.bounded = bounded
-        self.prng = prng
-        
-    def exponential_mechanism(self, errors, eps, sensitivity):
-        return list(errors.keys())[0] if errors else None
-        
-    def gaussian_noise(self, sigma, size):
-        return self.prng.normal(0, sigma, size)
+import numpy as np
+import pandas as pd
+import torch
 
 from ..base import BaseSynthesizer
+
+try:
+    from snsynth import Synthesizer as SNSynthesizer
+
+    AIM_AVAILABLE = True
+except ImportError:
+    AIM_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 # Simplified Dataset class that doesn't require complex mbi internals
@@ -105,48 +114,76 @@ class SimpleModel:
 
 class AIM(Mechanism, BaseSynthesizer):
     """
-    A simplified AIM implementation for table synthesis.
+    Differentially private synthesizer using the AIM algorithm.
+
+    Wraps SmartNoise SDK's ``AIMSynthesizer``, which uses the ``mbi``
+    (private-pgm) library for graphical model inference.
+
+    Only supports discrete / categorical data. Continuous columns are
+    automatically discretized into bins before synthesis.
     """
+
     def __init__(
         self,
         data_info=None,
-        epsilon=1.0,
-        delta=1e-9,
+        epsilon: float = 1.0,
+        delta: float = 1e-9,
+        max_model_size: int = 80,
+        degree: int = 2,
+        num_marginals: Optional[int] = None,
+        max_cells: int = 10000,
+        rounds: Optional[int] = None,
+        preprocessor_eps: float = 0.0,
+        n_bins: int = 15,
         prng=None,
-        rounds=None,
-        max_model_size=80,
-        max_iters=1000,
-        structural_zeros={},
-        checkpoint_interval_seconds=30,
+        # Legacy compat (accepted, ignored)
+        max_iters: int = 1000,
+        structural_zeros=None,
+        bounded: bool = True,
+        checkpoint_interval_seconds: int = 30,
         epochs=None,
-        **kwargs
+        **kwargs,
     ):
-        # Initialize prng if not provided
-        if prng is None:
-            prng = np.random
-            
-        Mechanism.__init__(self, epsilon, delta, True, prng)  # bounded=True
-        BaseSynthesizer.__init__(
-            self,
+        if not AIM_AVAILABLE:
+            raise ImportError(
+                "AIM requires smartnoise-synth and private-pgm. Install with:\n"
+                "  pip install smartnoise-synth\n"
+                "  pip install git+https://github.com/ryan112358/private-pgm.git"
+                "@01f02f17eba440f4e76c1d06fa5ee9eed0bd2bca"
+            )
+
+        super().__init__(
             data_info=data_info,
             checkpoint_interval_seconds=checkpoint_interval_seconds,
-            epochs=epochs or 1,  # Ensure epochs is not None
-            **kwargs
+            epochs=epochs or 1,
+            **kwargs,
         )
-        self.rounds = rounds
+
+        # AIM parameters
+        self.epsilon = epsilon
+        self.delta = delta
         self.max_model_size = max_model_size
-        self.max_iters = max_iters
-        self.structural_zeros = structural_zeros
-        
-        # Simple CDP conversion (approximate)
-        self.rho = epsilon**2 / (2 * np.log(1/delta)) if delta > 0 else epsilon
-        
-        self.prng = prng
-        self.model = None
-        self.synthetic_data = None
+        self.degree = degree
+        self.num_marginals = num_marginals
+        self.max_cells = max_cells
+        self.rounds = rounds
+        self.preprocessor_eps = preprocessor_eps
+        self.n_bins = n_bins
+        self.prng = prng if prng is not None else np.random
+
+        # State
+        self._aim_synth = None  # SmartNoise AIMSynthesizer instance
+        self.stored_data: Optional[pd.DataFrame] = None
+        self._column_names = []
+        self._dtypes: Dict[str, np.dtype] = {}
+        self.model = None  # kept for checkpoint compat
+        self.model_loaded = False
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def fit(self, data, batch_size=32):
-        """Public fit method that calls the base class train method."""
         self.train(data, batch_size)
 
     def sample(self, n, return_dataframe=False):
@@ -166,12 +203,43 @@ class AIM(Mechanism, BaseSynthesizer):
         else:
             return samples
 
-    def _train(self, train_dataloader):
-        """Train the AIM model using tensor data from dataloader"""
+        self.start_threading()
         st = time.time()
-        print("Training AIM model...")
+        logger.info("Training AIM model (epsilon=%.2f)...", self.epsilon)
 
-        # Convert tensor dataloader to DataFrame for AIM processing
+        self.stored_data = train_data.copy()
+        self._column_names = list(train_data.columns)
+        self._dtypes = {col: train_data[col].dtype for col in train_data.columns}
+
+        # Create SmartNoise AIM synthesizer
+        self._aim_synth = SNSynthesizer.create(
+            "aim",
+            epsilon=self.epsilon,
+            delta=self.delta,
+            max_model_size=self.max_model_size,
+            degree=self.degree,
+            num_marginals=self.num_marginals,
+            max_cells=self.max_cells,
+            rounds=self.rounds,
+            verbose=False,
+        )
+
+        # Fit on the DataFrame
+        # preprocessor_eps allocates part of the privacy budget for data
+        # preprocessing (discretization). 0.0 means no DP preprocessing.
+        self._aim_synth.fit(
+            train_data,
+            preprocessor_eps=self.preprocessor_eps,
+        )
+
+        self.model = self._aim_synth  # for checkpoint compat
+        self.model_loaded = True
+
+        logger.info("AIM training completed in %.2fs", time.time() - st)
+        self.stop_threading()
+
+    def _train(self, train_dataloader):
+        """Handle DataLoader input by converting to DataFrame first."""
         all_data = []
         for batch in train_dataloader:
             all_data.append(batch.detach().cpu().numpy())
@@ -222,31 +290,78 @@ class AIM(Mechanism, BaseSynthesizer):
         return model, synth
 
     def _generate(self, n, condition=None):
-        """Sample data similar to the training data."""
-        if self.model is None:
+        if self._aim_synth is None:
             raise RuntimeError("Model must be trained before generating samples")
-            
-        print(f'Generating {n} samples...')
-        synth = self.model.synthetic_data(rows=n)
 
-        # Return as tensor to match base class interface
-        data = synth.df.to_numpy()
+        logger.info("Generating %d samples...", n)
+        samples_df = self._aim_synth.sample(n)
+
+        # Ensure column names match
+        if self._column_names and len(samples_df.columns) == len(self._column_names):
+            samples_df.columns = self._column_names
+
+        # Return as tensor (base class interface)
+        data = samples_df.to_numpy(dtype=float, na_value=0)
         return torch.tensor(data, dtype=torch.float32)
 
-    def init_model(self, train_data):
-        if self.model_loaded:
-            return
+    def sample(self, n=None, return_dataframe=False):
+        if n is None:
+            n = len(self.stored_data) if self.stored_data is not None else 100
+
+        if self._aim_synth is None:
+            raise RuntimeError("Model must be trained before sampling")
+
+        samples_df = self._aim_synth.sample(int(n))
+
+        # Ensure column names match
+        if self._column_names and len(samples_df.columns) == len(self._column_names):
+            samples_df.columns = self._column_names
+
+        if return_dataframe:
+            return samples_df
+
+        # Encode categorical columns to numeric for tensor output
+        encoded_df = samples_df.copy()
+        for col in encoded_df.columns:
+            if not pd.api.types.is_numeric_dtype(encoded_df[col]):
+                encoded_df[col] = pd.Categorical(encoded_df[col]).codes
+        data = encoded_df.to_numpy(dtype=float)
+        return torch.tensor(data, dtype=torch.float32)
+
+    def generate(self, n_samples, condition=None):
+        return self._generate(int(n_samples), condition)
+
+    # ------------------------------------------------------------------
+    # Checkpointing
+    # ------------------------------------------------------------------
 
     def get_state(self):
-        state = {
-            'model': self.model if hasattr(self, 'model') else None,
+        return {
+            "stored_data": self.stored_data,
+            "column_names": self._column_names,
+            "dtypes": {k: str(v) for k, v in self._dtypes.items()},
+            "epsilon": self.epsilon,
+            "delta": self.delta,
+            "max_model_size": self.max_model_size,
+            "degree": self.degree,
+            "num_marginals": self.num_marginals,
+            "max_cells": self.max_cells,
+            "rounds": self.rounds,
+            "preprocessor_eps": self.preprocessor_eps,
         }
-        return state
 
     def load_state(self, checkpoint):
         state = torch.load(checkpoint, weights_only=False)
         self.model = state['model']
         self.model_loaded = True
+
+    # ------------------------------------------------------------------
+    # Legacy compat
+    # ------------------------------------------------------------------
+
+    def init_model(self, train_data):
+        if self.model_loaded:
+            return
 
     def default_params(self):
         """Return default parameters"""
