@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import shutil
 import os
+import importlib
 from stg.AIM.AIM import AIM
 
 def test_aim_initialization():
@@ -78,3 +79,34 @@ def test_aim_save_load_preserves_decoder_metadata(sample_data, tmp_path):
     assert isinstance(restored_samples, pd.DataFrame)
     assert restored_samples.shape == (6, sample_data.shape[1])
     assert list(restored_samples.columns) == list(sample_data.columns)
+
+def test_aim_auto_backend_prefers_snsynth_when_available(sample_categorical_data, monkeypatch):
+    """Auto backend should route to snsynth when that backend is available."""
+    aim_module = importlib.import_module("stg.AIM.AIM")
+
+    class DummySNSynth:
+        def __init__(self):
+            self.fitted_df = None
+
+        @classmethod
+        def create(cls, *args, **kwargs):
+            return cls()
+
+        def fit(self, df, preprocessor_eps=0.0):
+            self.fitted_df = df.copy()
+
+        def sample(self, n):
+            return pd.concat([self.fitted_df.iloc[[0]].copy() for _ in range(n)], ignore_index=True)
+
+    monkeypatch.setattr(aim_module, "SNSYNTH_AVAILABLE", True)
+    monkeypatch.setattr(aim_module, "SNSynthesizer", DummySNSynth)
+
+    model = aim_module.AIM(epsilon=1.0, epochs=1, backend="auto")
+    assert model.backend == "snsynth"
+
+    model.fit(sample_categorical_data)
+    samples = model.sample(4, return_dataframe=True)
+
+    assert isinstance(model.model, DummySNSynth)
+    assert isinstance(samples, pd.DataFrame)
+    assert list(samples.columns) == list(sample_categorical_data.columns)

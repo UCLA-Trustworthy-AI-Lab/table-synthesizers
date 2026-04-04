@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """
 AIM (Adaptive and Iterative Mechanism) synthesizer for differentially private
 tabular data generation.
@@ -24,6 +25,19 @@ from __future__ import annotations
 import logging
 import time
 from typing import Dict, Optional
+=======
+"""AIM synthesizer wrapper with optional real snsynth backend.
+
+This module prefers a real AIM implementation via ``snsynth`` when that package
+is installed. When it is not available, the exported ``AIM`` class falls back to
+the existing lightweight Laplace-noise baseline so the package remains usable.
+"""
+
+import itertools
+import logging
+import time
+import warnings
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
 
 import numpy as np
 import pandas as pd
@@ -34,14 +48,34 @@ from ..base import BaseSynthesizer
 try:
     from snsynth import Synthesizer as SNSynthesizer
 
-    AIM_AVAILABLE = True
-except ImportError:
-    AIM_AVAILABLE = False
+    SNSYNTH_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    SNSynthesizer = None
+    SNSYNTH_AVAILABLE = False
+
+AIM_MBI_AVAILABLE = SNSYNTH_AVAILABLE
+AIM_AVAILABLE = True
+_AIM_BASELINE_WARNING_EMITTED = False
 
 logger = logging.getLogger(__name__)
 
 
-# Simplified Dataset class that doesn't require complex mbi internals
+class Mechanism:
+    """Minimal DP mechanism base used by the compatibility wrapper."""
+
+    def __init__(self, epsilon, delta, bounded, prng):
+        self.epsilon = epsilon
+        self.delta = delta
+        self.bounded = bounded
+        self.prng = prng
+
+    def exponential_mechanism(self, errors, eps, sensitivity):
+        return list(errors.keys())[0] if errors else None
+
+    def gaussian_noise(self, sigma, size):
+        return self.prng.normal(0, sigma, size)
+
+
 class SimpleDomain:
     """Pickle-safe lightweight domain object."""
 
@@ -62,56 +96,57 @@ class SimpleDomain:
 
 
 class SimpleDataset:
+    """Simple dataset wrapper holding a DataFrame and finite domain metadata."""
+
     def __init__(self, df, domain_dict, weights=None):
-        """Simple dataset that works with basic domain info"""
         self.df = df
         self.domain_dict = domain_dict
         self.weights = weights
         self.attrs = list(domain_dict.keys())
-
         self.domain = SimpleDomain(domain_dict)
-    
+
     def project(self, cols):
         if isinstance(cols, str):
             cols = [cols]
         projected_df = self.df[cols].copy()
         projected_domain = {col: self.domain_dict[col] for col in cols}
         return SimpleDataset(projected_df, projected_domain, self.weights)
-    
+
     def datavector(self, flatten=True):
-        """Return the database in vector-of-counts form"""
-        # Create bins for histogramdd
         bins = []
         for col in self.df.columns:
             bins.append(range(self.domain_dict[col] + 1))
-        
+
         ans = np.histogramdd(self.df.values, bins, weights=self.weights)[0]
         return ans.flatten() if flatten else ans
 
+
 class SimpleModel:
+    """Baseline model that resamples from a noisy synthetic table."""
+
     def __init__(self, synthetic_df, domain_dict, data_domain=None):
         self.synthetic_df = synthetic_df
         self.domain_dict = domain_dict
-        self.domain = data_domain 
-        
+        self.domain = data_domain
+
     def synthetic_data(self, rows=None):
         if rows is None:
             return SimpleDataset(self.synthetic_df, self.domain_dict)
+
+        if rows <= len(self.synthetic_df):
+            sampled = self.synthetic_df.sample(n=rows, replace=False)
         else:
-            # Sample with replacement if needed
-            if rows <= len(self.synthetic_df):
-                sampled = self.synthetic_df.sample(n=rows, replace=False)
-            else:
-                sampled = self.synthetic_df.sample(n=rows, replace=True)
-            return SimpleDataset(sampled, self.domain_dict)
-            
+            sampled = self.synthetic_df.sample(n=rows, replace=True)
+        return SimpleDataset(sampled, self.domain_dict)
+
     def project(self, cols):
         return self.synthetic_data().project(cols)
-        
+
     @property
     def cliques(self):
         return [tuple(self.synthetic_df.columns)]
 
+<<<<<<< HEAD
 class AIM(BaseSynthesizer):
     """
     Differentially private synthesizer using the AIM algorithm.
@@ -121,27 +156,43 @@ class AIM(BaseSynthesizer):
 
     Only supports discrete / categorical data. Continuous columns are
     automatically discretized into bins before synthesis.
+=======
+
+class AIM(Mechanism, BaseSynthesizer):
+    """
+    AIM wrapper with `snsynth` preferred when available.
+
+    Backend behavior:
+    - `backend="auto"`: use real AIM through `snsynth` if installed, otherwise
+      fall back to the compatibility baseline.
+    - `backend="snsynth"`: require the real AIM backend.
+    - `backend="baseline"`: force the compatibility baseline.
+
+    Even with the snsynth backend enabled, this class trains on the encoded
+    feature space produced by `BaseSynthesizer` so it remains compatible with
+    the rest of this repository's tensor-based interfaces.
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
     """
 
     def __init__(
         self,
         data_info=None,
-        epsilon: float = 1.0,
-        delta: float = 1e-9,
-        max_model_size: int = 80,
-        degree: int = 2,
-        num_marginals: Optional[int] = None,
-        max_cells: int = 10000,
-        rounds: Optional[int] = None,
-        preprocessor_eps: float = 0.0,
-        n_bins: int = 15,
+        epsilon=1.0,
+        delta=1e-9,
+        max_model_size=80,
+        degree=2,
+        num_marginals=None,
+        max_cells=10000,
+        rounds=None,
+        preprocessor_eps=0.0,
+        n_bins=15,
         prng=None,
-        # Legacy compat (accepted, ignored)
-        max_iters: int = 1000,
+        max_iters=1000,
         structural_zeros=None,
-        bounded: bool = True,
-        checkpoint_interval_seconds: int = 30,
+        bounded=True,
+        checkpoint_interval_seconds=30,
         epochs=None,
+<<<<<<< HEAD
         **kwargs,
     ):
         if not AIM_AVAILABLE:
@@ -153,13 +204,32 @@ class AIM(BaseSynthesizer):
             )
 
         super().__init__(
+=======
+        continuous_binning="uniform",
+        continuous_bin_count=None,
+        continuous_min_bins=10,
+        continuous_max_bins=100,
+        backend="auto",
+        **kwargs,
+    ):
+        if prng is None:
+            prng = np.random
+
+        if epsilon <= 0:
+            raise ValueError("epsilon must be positive")
+        if delta < 0:
+            raise ValueError("delta must be non-negative")
+
+        Mechanism.__init__(self, epsilon, delta, bounded, prng)
+        BaseSynthesizer.__init__(
+            self,
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
             data_info=data_info,
             checkpoint_interval_seconds=checkpoint_interval_seconds,
             epochs=epochs or 1,
             **kwargs,
         )
 
-        # AIM parameters
         self.epsilon = epsilon
         self.delta = delta
         self.max_model_size = max_model_size
@@ -169,6 +239,7 @@ class AIM(BaseSynthesizer):
         self.rounds = rounds
         self.preprocessor_eps = preprocessor_eps
         self.n_bins = n_bins
+<<<<<<< HEAD
         self.prng = prng if prng is not None else np.random
 
         # State
@@ -182,26 +253,69 @@ class AIM(BaseSynthesizer):
     # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
+=======
+        self.max_iters = max_iters
+        self.structural_zeros = structural_zeros or {}
+        self.continuous_binning = continuous_binning
+        self.continuous_bin_count = continuous_bin_count
+        self.continuous_min_bins = continuous_min_bins
+        self.continuous_max_bins = continuous_max_bins
+
+        self.rho = epsilon**2 / (2 * np.log(1 / delta)) if delta > 0 else epsilon
+
+        self.prng = prng
+        self.model = None
+        self.synthetic_data = None
+        self.stored_data = None
+        self._discretization_info = {}
+        self._sample_columns = []
+        self._aim_synth = None
+        self.backend_preference = backend
+        self.backend = self._resolve_backend(backend)
+
+        self._validate_binning_configuration()
+        if self.backend == "baseline":
+            self._warn_baseline_implementation()
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
 
     def fit(self, data, batch_size=32):
         self.train(data, batch_size)
 
     def sample(self, n, return_dataframe=False):
-        """Generate samples and optionally decode them back to a DataFrame."""
         samples = self.generate(n)
         if return_dataframe:
             return self.decode_samples(samples)
         return samples
 
-        self.start_threading()
+    def _resolve_backend(self, backend):
+        valid_backends = {"auto", "snsynth", "baseline"}
+        if backend not in valid_backends:
+            raise ValueError(f"backend must be one of {sorted(valid_backends)}, got {backend!r}")
+
+        if backend == "auto":
+            return "snsynth" if SNSYNTH_AVAILABLE else "baseline"
+        if backend == "snsynth" and not SNSYNTH_AVAILABLE:
+            raise ImportError(
+                "backend='snsynth' was requested, but snsynth is not installed. "
+                "Install snsynth or use backend='baseline'."
+            )
+        return backend
+
+    def _train(self, train_dataloader):
+        if self.backend == "snsynth":
+            self._train_with_snsynth(train_dataloader)
+        else:
+            self._train_with_baseline(train_dataloader)
+
+    def _train_with_snsynth(self, train_dataloader):
+        """Train with the real AIM backend from snsynth."""
         st = time.time()
-        logger.info("Training AIM model (epsilon=%.2f)...", self.epsilon)
+        logger.info("Training AIM with snsynth backend...")
 
-        self.stored_data = train_data.copy()
-        self._column_names = list(train_data.columns)
-        self._dtypes = {col: train_data[col].dtype for col in train_data.columns}
+        train_df = self._dataloader_to_dataframe(train_dataloader)
+        self.stored_data = train_df.copy()
+        self._sample_columns = list(train_df.columns)
 
-        # Create SmartNoise AIM synthesizer
         self._aim_synth = SNSynthesizer.create(
             "aim",
             epsilon=self.epsilon,
@@ -214,135 +328,98 @@ class AIM(BaseSynthesizer):
             verbose=False,
         )
 
-        # Fit on the DataFrame
-        # preprocessor_eps allocates part of the privacy budget for data
-        # preprocessing (discretization). 0.0 means no DP preprocessing.
-        self._aim_synth.fit(
-            train_data,
-            preprocessor_eps=self.preprocessor_eps,
-        )
+        try:
+            self._aim_synth.fit(train_df, preprocessor_eps=self.preprocessor_eps)
+        except TypeError:
+            # Some snsynth versions expose a slightly different fit signature.
+            self._aim_synth.fit(train_df)
 
-        self.model = self._aim_synth  # for checkpoint compat
+        self.model = self._aim_synth
+        self.synthetic_data = None
         self.model_loaded = True
 
-        logger.info("AIM training completed in %.2fs", time.time() - st)
-        self.stop_threading()
+        logger.info("snsynth AIM training completed in %.2fs", time.time() - st)
 
+<<<<<<< HEAD
     def _train(self, train_dataloader):
         """Handle DataLoader input by converting to DataFrame first."""
+=======
+    def _train_with_baseline(self, train_dataloader):
+        """Train the fallback Laplace-noise baseline."""
+        st = time.time()
+        logger.info("Training AIM compatibility baseline...")
+
+        train_df = self._dataloader_to_dataframe(train_dataloader)
+        self.stored_data = train_df.copy()
+        self._sample_columns = list(train_df.columns)
+
+        data, workload = self.prepare_parameters(train_df)
+        self.model, self.synthetic_data = self.run_laplace_baseline(
+            data,
+            workload,
+            train_df.shape[0],
+        )
+        self.model_loaded = True
+
+        logger.info("AIM compatibility baseline training completed in %.2fs", time.time() - st)
+
+    def _dataloader_to_dataframe(self, train_dataloader):
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
         all_data = []
         for batch in train_dataloader:
+            if isinstance(batch, (list, tuple)):
+                batch = batch[0]
             all_data.append(batch.detach().cpu().numpy())
 
-        train_data = np.concatenate(all_data, axis=0)
-        
-        # Preserve encoded feature names when they are available so decoding and
-        # checkpoint restoration can reconstruct the original schema.
-        num_cols = train_data.shape[1]
+        train_array = np.concatenate(all_data, axis=0)
+        num_cols = train_array.shape[1]
         if self.feature_names and len(self.feature_names) == num_cols:
             columns = self.feature_names
         else:
-            columns = [f'col_{i}' for i in range(num_cols)]
-        train_df = pd.DataFrame(train_data, columns=columns)
-
-        print("Data preparation completed")
-
-        # Convert data to AIM format
-        data, workload = self.prepare_parameters(train_df)
-
-        # Run the implemented baseline. This is intentionally named separately
-        # from the published AIM algorithm to avoid overstating its behavior.
-        self.model, self.synthetic_data = self.run_laplace_baseline(data, workload, train_df.shape[0])
-
-        ed = time.time()
-        print("AIM training completed in:", ed - st, "seconds")
+            columns = [f"col_{i}" for i in range(num_cols)]
+        return pd.DataFrame(train_array, columns=columns)
 
     def run_laplace_baseline(self, data, workload, n_samples):
-        """Run the implemented Laplace-noise baseline.
-
-        Unlike the real AIM algorithm, this method does not measure selected
-        marginals and fit a model to them. It perturbs discretized records
-        directly and resamples from the resulting noisy table.
-        """
-        print("Running Laplace-noise AIM baseline...")
-        
-        # `workload` and `n_samples` are unused in this baseline implementation,
-        # but kept in the signature for compatibility with the higher-level API.
+        """Run the implemented Laplace-noise baseline."""
         _ = workload
         _ = n_samples
-        
-        # Add Laplace noise for differential privacy
+
         noise_scale = 1.0 / self.epsilon
         noisy_data = data.df.values + self.prng.laplace(0, noise_scale, data.df.shape)
-        
-        # Clip to valid ranges
+
         for i, col in enumerate(data.df.columns):
             max_val = data.domain_dict[col] - 1
             noisy_data[:, i] = np.clip(noisy_data[:, i], 0, max_val)
             noisy_data[:, i] = np.round(noisy_data[:, i])
-        
-        # Create synthetic data
-        synthetic_df = pd.DataFrame(noisy_data.astype(np.int64), columns=data.df.columns)
-        
 
-        
+        synthetic_df = pd.DataFrame(noisy_data.astype(np.int64), columns=data.df.columns)
         model = SimpleModel(synthetic_df, data.domain_dict, data.domain)
         synth = model.synthetic_data()
-        
         return model, synth
 
     def run_simple_aim(self, data, workload, n_samples):
-        """Backward-compatible alias for the implemented baseline."""
+        """Backward-compatible alias for the fallback baseline."""
         return self.run_laplace_baseline(data, workload, n_samples)
 
     def _generate(self, n, condition=None):
-        if self._aim_synth is None:
+        _ = condition
+        if self.model is None:
             raise RuntimeError("Model must be trained before generating samples")
 
-        logger.info("Generating %d samples...", n)
-        samples_df = self._aim_synth.sample(n)
+        if self.backend == "snsynth":
+            samples_df = self._aim_synth.sample(int(n))
+            if self._sample_columns and len(samples_df.columns) == len(self._sample_columns):
+                samples_df.columns = self._sample_columns
+            data = samples_df.fillna(0).to_numpy(dtype=float)
+            return torch.tensor(data, dtype=torch.float32)
 
-        # Ensure column names match
-        if self._column_names and len(samples_df.columns) == len(self._column_names):
-            samples_df.columns = self._column_names
-
-        # Return as tensor (base class interface)
-        data = samples_df.to_numpy(dtype=float, na_value=0)
+        synth = self.model.synthetic_data(rows=n)
+        data = synth.df.to_numpy()
         return torch.tensor(data, dtype=torch.float32)
-
-    def sample(self, n=None, return_dataframe=False):
-        if n is None:
-            n = len(self.stored_data) if self.stored_data is not None else 100
-
-        if self._aim_synth is None:
-            raise RuntimeError("Model must be trained before sampling")
-
-        samples_df = self._aim_synth.sample(int(n))
-
-        # Ensure column names match
-        if self._column_names and len(samples_df.columns) == len(self._column_names):
-            samples_df.columns = self._column_names
-
-        if return_dataframe:
-            return samples_df
-
-        # Encode categorical columns to numeric for tensor output
-        encoded_df = samples_df.copy()
-        for col in encoded_df.columns:
-            if not pd.api.types.is_numeric_dtype(encoded_df[col]):
-                encoded_df[col] = pd.Categorical(encoded_df[col]).codes
-        data = encoded_df.to_numpy(dtype=float)
-        return torch.tensor(data, dtype=torch.float32)
-
-    def generate(self, n_samples, condition=None):
-        return self._generate(int(n_samples), condition)
-
-    # ------------------------------------------------------------------
-    # Checkpointing
-    # ------------------------------------------------------------------
 
     def get_state(self):
         return {
+<<<<<<< HEAD
             "stored_data": self.stored_data,
             "column_names": self._column_names,
             "dtypes": {k: str(v) for k, v in self._dtypes.items()},
@@ -354,54 +431,74 @@ class AIM(BaseSynthesizer):
             "max_cells": self.max_cells,
             "rounds": self.rounds,
             "preprocessor_eps": self.preprocessor_eps,
+=======
+            "model": self.model,
+            "backend": self.backend,
+            "backend_preference": self.backend_preference,
+            "encoders": getattr(self, "encoders", {}),
+            "feature_names": getattr(self, "feature_names", []),
+            "column_info": getattr(self, "column_info", {}),
+            "data_info": getattr(self, "data_info", None),
+            "discretization_info": getattr(self, "_discretization_info", {}),
+            "continuous_binning": self.continuous_binning,
+            "continuous_bin_count": self.continuous_bin_count,
+            "continuous_min_bins": self.continuous_min_bins,
+            "continuous_max_bins": self.continuous_max_bins,
+            "sample_columns": self._sample_columns,
+            "implementation": "snsynth_aim" if self.backend == "snsynth" else "laplace_noise_baseline",
+>>>>>>> 276de08 (Add optional snsynth backend for AIM with baseline fallback)
         }
 
     def load_state(self, checkpoint):
         state = torch.load(checkpoint, weights_only=False)
-        self.model = state['model']
-        self.encoders = state.get('encoders', {})
-        self.feature_names = state.get('feature_names', [])
-        self.column_info = state.get('column_info', {})
-        self.data_info = state.get('data_info', self.data_info)
-        self._discretization_info = state.get('discretization_info', {})
-        self.continuous_binning = state.get('continuous_binning', self.continuous_binning)
-        self.continuous_bin_count = state.get('continuous_bin_count', self.continuous_bin_count)
-        self.continuous_min_bins = state.get('continuous_min_bins', self.continuous_min_bins)
-        self.continuous_max_bins = state.get('continuous_max_bins', self.continuous_max_bins)
-        self.synthetic_data = self.model.synthetic_data() if self.model is not None else None
+        self.model = state["model"]
+        self.backend = state.get("backend", self.backend)
+        self.backend_preference = state.get("backend_preference", self.backend_preference)
+        self.encoders = state.get("encoders", {})
+        self.feature_names = state.get("feature_names", [])
+        self.column_info = state.get("column_info", {})
+        self.data_info = state.get("data_info", self.data_info)
+        self._discretization_info = state.get("discretization_info", {})
+        self.continuous_binning = state.get("continuous_binning", self.continuous_binning)
+        self.continuous_bin_count = state.get("continuous_bin_count", self.continuous_bin_count)
+        self.continuous_min_bins = state.get("continuous_min_bins", self.continuous_min_bins)
+        self.continuous_max_bins = state.get("continuous_max_bins", self.continuous_max_bins)
+        self._sample_columns = state.get("sample_columns", [])
+
+        if self.backend == "snsynth":
+            self._aim_synth = self.model
+            self.synthetic_data = None
+        else:
+            self._aim_synth = None
+            self.synthetic_data = self.model.synthetic_data() if self.model is not None else None
+
         self.model_loaded = True
 
-    # ------------------------------------------------------------------
-    # Legacy compat
-    # ------------------------------------------------------------------
-
     def init_model(self, train_data):
+        _ = train_data
         if self.model_loaded:
             return
 
     def default_params(self):
-        """Return default parameters"""
-        params = {}
-        params['epsilon'] = 1.0
-        params['delta'] = 1e-9
-        params['max_model_size'] = 80
-        params['degree'] = 2
-        params['num_marginals'] = None
-        params['max_cells'] = 10000
-        return params
+        return {
+            "epsilon": self.epsilon,
+            "delta": self.delta,
+            "max_model_size": self.max_model_size,
+            "degree": self.degree,
+            "num_marginals": self.num_marginals,
+            "max_cells": self.max_cells,
+        }
 
     def infer_domain(self, df):
         """Infer discrete domain sizes for the baseline discretization step."""
         domain = {}
-        print("Inferring domain for AIM!")
-        
+
         for col in df.columns:
             series = df[col].dropna()
             if series.empty:
                 domain[col] = 2
                 continue
-            
-            # For integer-like columns, use the range
+
             if self._is_integer_valued(series):
                 min_val = int(np.floor(series.min()))
                 max_val = int(np.ceil(series.max()))
@@ -415,10 +512,7 @@ class AIM(BaseSynthesizer):
     def prepare_parameters(self, train_data):
         params = self.default_params()
         domain_dict = self.infer_domain(train_data)
-        print("Dimension of transformed training data", train_data.shape)
-        print("Domain:", domain_dict)
-        
-        # Ensure data is integer-valued for AIM
+
         train_data = train_data.copy()
         self._discretization_info = {}
         for col in train_data.columns:
@@ -430,8 +524,8 @@ class AIM(BaseSynthesizer):
                 train_data[col] = shifted
                 domain_dict[col] = max(2, int(shifted.max()) + 1 if len(shifted) else 2)
                 self._discretization_info[col] = {
-                    'kind': 'discrete',
-                    'offset': min_val,
+                    "kind": "discrete",
+                    "offset": min_val,
                 }
             else:
                 discretized, bin_edges = self._discretize_continuous_column(
@@ -441,25 +535,25 @@ class AIM(BaseSynthesizer):
                 train_data[col] = discretized
                 domain_dict[col] = max(2, int(discretized.max()) + 1 if len(discretized) else 2)
                 self._discretization_info[col] = {
-                    'kind': 'binned',
-                    'bin_edges': bin_edges.tolist(),
-                    'strategy': self.continuous_binning,
+                    "kind": "binned",
+                    "bin_edges": bin_edges.tolist(),
+                    "strategy": self.continuous_binning,
                 }
-        
-        # Create Dataset
-        data = SimpleDataset(train_data, domain_dict)
 
-        # Create workload
-        workload = list(itertools.combinations(data.domain.attrs, params['degree']))
-        workload = [cl for cl in workload if data.domain.size(cl) <= params['max_cells']]
-        if params['num_marginals'] is not None:
-            workload = [workload[i] for i in self.prng.choice(len(workload), params['num_marginals'], replace=False)]
+        data = SimpleDataset(train_data, domain_dict)
+        workload = list(itertools.combinations(data.domain.attrs, params["degree"]))
+        workload = [cl for cl in workload if data.domain.size(cl) <= params["max_cells"]]
+        if params["num_marginals"] is not None:
+            workload = [
+                workload[i]
+                for i in self.prng.choice(len(workload), params["num_marginals"], replace=False)
+            ]
 
         workload = [(cl, 1.0) for cl in workload]
         return data, workload
 
     def decode_samples(self, samples):
-        """Decode baseline samples back to the original DataFrame schema."""
+        """Decode generated samples back to the original DataFrame schema."""
         encoded_df = self._restore_encoded_feature_space(samples)
         if self.encoders and self.feature_names and list(encoded_df.columns) == list(self.feature_names):
             return BaseSynthesizer.decode_samples(self, encoded_df[self.feature_names].to_numpy())
@@ -471,14 +565,19 @@ class AIM(BaseSynthesizer):
 
         if self.feature_names and samples.shape[1] == len(self.feature_names):
             columns = self.feature_names
-        elif self.model is not None and hasattr(self.model, 'synthetic_df'):
+        elif self._sample_columns and samples.shape[1] == len(self._sample_columns):
+            columns = self._sample_columns
+        elif self.model is not None and hasattr(self.model, "synthetic_df"):
             columns = list(self.model.synthetic_df.columns)
         else:
-            columns = [f'col_{i}' for i in range(samples.shape[1])]
+            columns = [f"col_{i}" for i in range(samples.shape[1])]
 
         encoded_df = pd.DataFrame(samples, columns=columns)
+        if self.backend == "snsynth":
+            return encoded_df
+
         restored_df = encoded_df.copy()
-        domain_dict = getattr(self.model, 'domain_dict', {}) if self.model is not None else {}
+        domain_dict = getattr(self.model, "domain_dict", {}) if self.model is not None else {}
 
         for col in restored_df.columns:
             info = self._discretization_info.get(col)
@@ -487,12 +586,12 @@ class AIM(BaseSynthesizer):
 
             codes = np.rint(restored_df[col].to_numpy()).astype(int)
 
-            if info['kind'] == 'discrete':
+            if info["kind"] == "discrete":
                 upper = max(0, int(domain_dict.get(col, codes.max() + 1 if len(codes) else 1)) - 1)
                 codes = np.clip(codes, 0, upper)
-                restored_df[col] = codes + info.get('offset', 0)
-            elif info['kind'] == 'binned':
-                edges = np.asarray(info.get('bin_edges', []), dtype=float)
+                restored_df[col] = codes + info.get("offset", 0)
+            elif info["kind"] == "binned":
+                edges = np.asarray(info.get("bin_edges", []), dtype=float)
                 if edges.size < 2:
                     restored_df[col] = 0.0
                     continue
@@ -503,7 +602,7 @@ class AIM(BaseSynthesizer):
         return restored_df
 
     def _validate_binning_configuration(self):
-        valid_strategies = {'uniform', 'quantile'}
+        valid_strategies = {"uniform", "quantile"}
         if self.continuous_binning not in valid_strategies:
             raise ValueError(
                 f"continuous_binning must be one of {sorted(valid_strategies)}, "
@@ -522,8 +621,8 @@ class AIM(BaseSynthesizer):
             return
 
         warnings.warn(
-            "stg.AIM.AIM currently uses a Laplace-noise baseline rather than "
-            "the full AIM marginal-selection and model-fitting algorithm.",
+            "stg.AIM.AIM is using the fallback Laplace-noise baseline because "
+            "snsynth is not available or backend='baseline' was requested.",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -554,13 +653,13 @@ class AIM(BaseSynthesizer):
         unique_count = max(2, int(series.nunique(dropna=True)))
         effective_bins = min(num_bins, unique_count)
 
-        if self.continuous_binning == 'quantile':
+        if self.continuous_binning == "quantile":
             codes, edges = pd.qcut(
                 series,
                 q=effective_bins,
                 labels=False,
                 retbins=True,
-                duplicates='drop',
+                duplicates="drop",
             )
         else:
             codes, edges = pd.cut(
@@ -568,7 +667,7 @@ class AIM(BaseSynthesizer):
                 bins=effective_bins,
                 labels=False,
                 retbins=True,
-                duplicates='drop',
+                duplicates="drop",
             )
 
         codes = pd.Series(codes, index=series.index).fillna(0).astype(int)
