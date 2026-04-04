@@ -5,25 +5,25 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'docker/Dockerfile.base'
-      - 'requirements.txt'
-      - 'requirements-base.txt'
-      - 'src/**'
-      - 'pyproject.toml'
+      - "docker/Dockerfile.base"
+      - "requirements.txt"
+      - "requirements-base.txt"
+      - "src/**"
+      - "pyproject.toml"
   workflow_dispatch:
     inputs:
       tag:
         description: 'Additional image tag (e.g. v1.0.0). "latest" and SHA are always added.'
         type: string
-        default: ''
+        default: ""
 
 concurrency:
   group: publish-base-image
-  cancel-in-progress: false   # Never cancel a publish mid-push
+  cancel-in-progress: false # Never cancel a publish mid-push
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/ohsono/table-synthesizers-base
+  IMAGE: ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base
 
 jobs:
   build-and-push:
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write   # Required to push to GHCR
+      packages: write # Required to push to GHCR
 
     steps:
       - uses: actions/checkout@v4
