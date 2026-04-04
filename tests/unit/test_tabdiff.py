@@ -65,9 +65,7 @@ def test_tabdiff_numeric_only():
         "a": np.random.randn(80),
         "b": np.random.rand(80) * 100,
     })
-    model = TabDiffSynthesizer(
-      
-      , random_state=42)
+    model = TabDiffSynthesizer(epochs=1, random_state=42)
     model.fit(df)
     samples = model.sample(10, return_dataframe=True)
     assert samples.shape == (10, 2)
