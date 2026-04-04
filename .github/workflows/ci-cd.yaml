@@ -11,9 +11,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, '*_test' ]
+    branches: [main, master, "*_test"]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -84,20 +84,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
         run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker pull ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest || \
           docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+            -t ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest --load .
       - name: Run targeted unit tests in Docker (push)
         if: github.event_name == 'push'
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app \
             -e CHANGED_MODELS="${{ needs.detect-changes.outputs.models_changed }}" \
-            ghcr.io/ohsono/table-synthesizers-base:latest \
+            ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest \
             bash -c "python tests/run_changed_models.py"
       - name: Run full unit tests in Docker (PR)
         if: github.event_name == 'pull_request'
         run: |
-          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest \
             bash -c "pytest tests/unit/ \
               --ignore-glob='**/test_arf.py' \
               --ignore-glob='**/test_bayesian_network.py' \
@@ -129,12 +129,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
         run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker pull ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest || \
           docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+            -t ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest --load .
       - name: Run integration tests in Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest \
             bash -c "pytest tests/integration/ --ignore-glob='**/test_edge_cases.py' -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
@@ -160,12 +160,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
         run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
+          docker pull ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest || \
           docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+            -t ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest --load .
       - name: Run edge case tests in Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base:latest \
             bash -c "pytest tests/integration/test_edge_cases.py -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
@@ -191,12 +191,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build GPU image
         run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-gpu:latest || \
+          docker pull ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-gpu:latest || \
           docker buildx build -f docker/Dockerfile.gpu \
-            -t ghcr.io/ohsono/table-synthesizers-gpu:latest --load .
+            -t ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-gpu:latest --load .
       - name: Run GPU tests in Docker (CPU Fallback)
         run: |
-          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-gpu:latest \
+          docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-gpu:latest \
             bash -c "pytest tests/ -m 'not synthcity' \
               --ignore-glob='**/test_arf.py' \
               --ignore-glob='**/test_bayesian_network.py' \
