@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import warnings
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -47,6 +48,14 @@ class TabDiffSynthesizer(BaseSynthesizer):
             synth.train(df)
             synthetic = synth.sample(1000, return_dataframe=True)
         # all temp files removed automatically
+
+    Public training-budget semantics:
+      - ``epochs`` is the number of training epochs.
+      - ``num_diffusion_steps`` is the diffusion-time discretization, not the
+        number of optimizer updates.
+      - ``steps`` is accepted as a deprecated alias for ``epochs`` because the
+        official TabDiff TOML historically used ``train.main.steps`` for an
+        epoch count.
     """
 
     def __init__(
@@ -71,6 +80,21 @@ class TabDiffSynthesizer(BaseSynthesizer):
         covariance_regularization: float = 1e-5,
         **kwargs,
     ):
+        deprecated_steps = kwargs.pop("steps", None)
+        if deprecated_steps is not None:
+            if epochs != 8000 and epochs != deprecated_steps:
+                raise ValueError(
+                    "TabDiffSynthesizer accepts either `epochs` or the deprecated "
+                    "`steps` alias, but not conflicting values for both."
+                )
+            warnings.warn(
+                "`steps` is a deprecated alias for TabDiff training epochs. "
+                "Use `epochs=` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            epochs = deprecated_steps
+
         super().__init__(data_info=data_info, epochs=epochs, **kwargs)
         self.target_column = target_column
 
@@ -335,6 +359,9 @@ class TabDiffSynthesizer(BaseSynthesizer):
             config["train"] = {}
         if "main" not in config["train"]:
             config["train"]["main"] = {}
+        config["train"]["main"]["epochs"] = self._epochs
+        # Keep the misleading upstream key for compatibility with older local
+        # TabDiff clones that still read `train.main.steps` as an epoch count.
         config["train"]["main"]["steps"] = self._epochs
         config["train"]["main"]["batch_size"] = self._batch_size
         config["train"]["main"]["lr"] = self._lr
