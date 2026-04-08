@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Union
-from imblearn.over_sampling import SMOTE, SMOTENC
+from imblearn.over_sampling import SMOTE, SMOTEN, SMOTENC
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.utils import check_random_state
 
@@ -156,16 +156,23 @@ def sample_smote(
     X_num = X[num_cols].copy()
     if is_regression:
         # Append the target to numeric features so that scaling can be inverted later.
+        # Always has at least one column (the target), so MinMaxScaler is safe even
+        # when num_cols is empty.
         X_num_target = pd.concat([X_num, y.rename("target")], axis=1)
         scaler = MinMaxScaler().fit(X_num_target)
         X_num_scaled = pd.DataFrame(scaler.transform(X_num_target),
                                     columns = list(X_num.columns) + ["target"],
                                     index=X_num_target.index)
-    else:
+    elif len(num_cols) > 0:
         scaler = MinMaxScaler().fit(X_num)
         X_num_scaled = pd.DataFrame(scaler.transform(X_num),
                                     columns = X_num.columns,
                                     index=X_num.index)
+    else:
+        # All-categorical classification (e.g. mushroom, soybean, splice):
+        # nothing to scale. Skip the scaler entirely.
+        scaler = None
+        X_num_scaled = pd.DataFrame(index=X.index)
     
     # --- Process categorical features ---
     cat_mapping = {}  # to store the mapping from codes back to original categories
@@ -245,7 +252,18 @@ def sample_smote(
     
     # --- Apply SMOTE ---
     if eval_type != 'real':
-        if cat_indices is not None:
+        if cat_indices is not None and len(num_cols) == 0 and not is_regression:
+            # All-categorical classification: SMOTENC refuses to run without
+            # numeric features ("SMOTE-NC is not designed to work only with
+            # categorical features"). Use SMOTEN (nominal-only variant) which
+            # is designed for this case. SMOTEN doesn't support the lam
+            # interpolation params, so they're ignored here.
+            sm = SMOTEN(
+                random_state=seed,
+                k_neighbors=k_neighbors,
+                sampling_strategy=strat,
+            )
+        elif cat_indices is not None:
             sm = MySMOTENC(
                 lam1=lam1,
                 lam2=lam2,
@@ -280,11 +298,15 @@ def sample_smote(
         # Separate numeric features and the target.
         numeric_features_res = X_num_res[:, :-1]
         target_res_numeric = X_num_res[:, -1]
-    else:
+    elif len(num_cols) > 0:
         n_num = len(X_num.columns)
         X_num_res_scaled = X_res[:, :n_num]
         X_num_res = scaler.inverse_transform(X_num_res_scaled)
         numeric_features_res = X_num_res
+    else:
+        # All-categorical classification: no numeric features to invert.
+        n_num = 0
+        numeric_features_res = np.empty((X_res.shape[0], 0))
 
     # --- Process categorical features from SMOTE output ---
     if X_cat_encoded is not None:
