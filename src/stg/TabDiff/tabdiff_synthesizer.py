@@ -427,12 +427,14 @@ class TabDiffSynthesizer(BaseSynthesizer):
         repo_dir = self._get_repo_dir()
         repo_abs = os.path.abspath(repo_dir)
 
-        # Record cleanup paths
+        # Record cleanup paths (TabDiff uses tabdiff/ subdir for ckpt/result)
         self._cleanup_dirs = [
             os.path.join(repo_abs, "data", self.dataset_name),
             os.path.join(repo_abs, "synthetic", self.dataset_name),
             os.path.join(repo_abs, "ckpt", self.dataset_name),
+            os.path.join(repo_abs, "tabdiff", "ckpt", self.dataset_name),
             os.path.join(repo_abs, "result", self.dataset_name),
+            os.path.join(repo_abs, "tabdiff", "result", self.dataset_name),
         ]
         self._cleanup_files = [
             os.path.join(repo_abs, "data", "Info", f"{self.dataset_name}.json"),
@@ -503,6 +505,25 @@ class TabDiffSynthesizer(BaseSynthesizer):
         self._check_repo_available()
         repo_abs = os.path.abspath(self._get_repo_dir())
 
+        # Find the best checkpoint from training
+        ckpt_dir = os.path.join(repo_abs, "tabdiff", "ckpt", self.dataset_name, "learnable_schedule")
+        if not os.path.isdir(ckpt_dir):
+            ckpt_dir = os.path.join(repo_abs, "ckpt", self.dataset_name, "learnable_schedule")
+        ckpt_candidates = sorted(
+            glob.glob(os.path.join(ckpt_dir, "best_ema_model_*.pt")),
+            key=os.path.getmtime, reverse=True,
+        )
+        if not ckpt_candidates:
+            ckpt_candidates = sorted(
+                glob.glob(os.path.join(ckpt_dir, "best_model_*.pt")),
+                key=os.path.getmtime, reverse=True,
+            )
+        if not ckpt_candidates:
+            raise RuntimeError(
+                f"No checkpoint found in {ckpt_dir}. "
+                f"Training may not have run long enough to save a checkpoint."
+            )
+
         # Run sampling subprocess
         cmd = [
             sys.executable,
@@ -510,12 +531,16 @@ class TabDiffSynthesizer(BaseSynthesizer):
             "--dataname", self.dataset_name,
             "--mode", "test",
             "--no_wandb",
+            "--ckpt_path", ckpt_candidates[0],
             "--num_samples_to_generate", str(n_samples),
         ]
         self._run_subprocess(cmd, "sample")
 
         # Find output CSV — glob for samples*.csv under result/
-        result_dir = os.path.join(repo_abs, "result", self.dataset_name)
+        # TabDiff saves results under tabdiff/result/ (curr_dir is tabdiff/)
+        result_dir = os.path.join(repo_abs, "tabdiff", "result", self.dataset_name)
+        if not os.path.isdir(result_dir):
+            result_dir = os.path.join(repo_abs, "result", self.dataset_name)
         csv_candidates = sorted(
             glob.glob(os.path.join(result_dir, "**", "*.csv"), recursive=True),
             key=os.path.getmtime,
