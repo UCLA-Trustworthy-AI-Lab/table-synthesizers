@@ -101,7 +101,10 @@ class TabDiffSynthesizer(BaseSynthesizer):
         self._cleanup_dirs: List[str] = []
         self._cleanup_files: List[str] = []
         self._cleaned_up = False
-        self._toml_backup_path: Optional[str] = None
+        # Per-task TOML config path (set by _patch_toml_config). Each task writes
+        # its own TOML so multiple workers can run in parallel without racing on
+        # the shared upstream config file.
+        self._task_config_path: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Repo management
@@ -303,26 +306,28 @@ class TabDiffSynthesizer(BaseSynthesizer):
     # ------------------------------------------------------------------
 
     def _patch_toml_config(self):
-        """Patch the TabDiff TOML config with user hyperparameters."""
+        """Write a per-task TOML config so multiple workers can run in parallel.
+
+        Reads the canonical upstream TOML, applies our hyperparameter overrides,
+        and writes the result to a unique per-task path. The TabDiff subprocess
+        is then invoked with --config_path pointing at this file.
+        """
         try:
             import tomli
             import tomli_w
         except ImportError:
-            logger.warning("tomli/tomli_w not installed; using default TabDiff config")
+            logger.warning(
+                "tomli/tomli_w not installed; cannot create per-task TabDiff "
+                "config (parallelism will not be safe)"
+            )
             return
 
         repo_dir = self._get_repo_dir()
-        toml_path = os.path.join(repo_dir, "tabdiff", "configs", "tabdiff_configs.toml")
-        if not os.path.isfile(toml_path):
+        canonical_toml = os.path.join(repo_dir, "tabdiff", "configs", "tabdiff_configs.toml")
+        if not os.path.isfile(canonical_toml):
             return
 
-        # Backup original
-        backup_path = toml_path + ".bak"
-        if not os.path.exists(backup_path):
-            shutil.copy2(toml_path, backup_path)
-            self._toml_backup_path = backup_path
-
-        with open(toml_path, "rb") as f:
+        with open(canonical_toml, "rb") as f:
             config = tomli.load(f)
 
         # Patch values
@@ -338,16 +343,17 @@ class TabDiffSynthesizer(BaseSynthesizer):
             config["diffusion_params"] = {}
         config["diffusion_params"]["num_timesteps"] = self.num_diffusion_steps
 
-        with open(toml_path, "wb") as f:
+        # Write to a per-task path so concurrent workers don't race
+        per_task_toml = os.path.join(
+            repo_dir, "tabdiff", "configs", f"tabdiff_configs_{self.dataset_name}.toml"
+        )
+        with open(per_task_toml, "wb") as f:
             tomli_w.dump(config, f)
 
-    def _restore_toml_config(self):
-        """Restore the original TOML config from backup."""
-        if self._toml_backup_path and os.path.isfile(self._toml_backup_path):
-            toml_path = self._toml_backup_path.replace(".bak", "")
-            shutil.copy2(self._toml_backup_path, toml_path)
-            os.remove(self._toml_backup_path)
-            self._toml_backup_path = None
+        self._task_config_path = per_task_toml
+        # Track for cleanup
+        if per_task_toml not in self._cleanup_files:
+            self._cleanup_files.append(per_task_toml)
 
     # ------------------------------------------------------------------
     # Subprocess execution
@@ -427,7 +433,9 @@ class TabDiffSynthesizer(BaseSynthesizer):
         repo_dir = self._get_repo_dir()
         repo_abs = os.path.abspath(repo_dir)
 
-        # Record cleanup paths (TabDiff uses tabdiff/ subdir for ckpt/result)
+        # Record cleanup paths. TabDiff's main.py uses curr_dir = TabDiff_repo/tabdiff,
+        # so checkpoints and results live under tabdiff/{ckpt,result}/. Keep the legacy
+        # repo_abs/{ckpt,result}/ entries as fallbacks so old runs are also cleaned up.
         self._cleanup_dirs = [
             os.path.join(repo_abs, "data", self.dataset_name),
             os.path.join(repo_abs, "synthetic", self.dataset_name),
@@ -462,6 +470,8 @@ class TabDiffSynthesizer(BaseSynthesizer):
                 "--no_wandb",
                 "--deterministic",
             ]
+            if self._task_config_path:
+                cmd.extend(["--config_path", self._task_config_path])
             self._run_subprocess(cmd, "train")
 
             self.trained = True
@@ -534,10 +544,14 @@ class TabDiffSynthesizer(BaseSynthesizer):
             "--ckpt_path", ckpt_candidates[0],
             "--num_samples_to_generate", str(n_samples),
         ]
+        if self._task_config_path:
+            cmd.extend(["--config_path", self._task_config_path])
         self._run_subprocess(cmd, "sample")
 
-        # Find output CSV — glob for samples*.csv under result/
-        # TabDiff saves results under tabdiff/result/ (curr_dir is tabdiff/)
+        # Find output CSV — glob for samples*.csv under result/.
+        # TabDiff main.py uses curr_dir = tabdiff/, so outputs land in
+        # tabdiff/result/{dataset}/. Fall back to legacy result/{dataset}/
+        # for older TabDiff layouts.
         result_dir = os.path.join(repo_abs, "tabdiff", "result", self.dataset_name)
         if not os.path.isdir(result_dir):
             result_dir = os.path.join(repo_abs, "result", self.dataset_name)
@@ -699,8 +713,6 @@ class TabDiffSynthesizer(BaseSynthesizer):
         """Remove all temporary files created during training. Idempotent."""
         if self._cleaned_up:
             return
-
-        self._restore_toml_config()
 
         for d in self._cleanup_dirs:
             if os.path.isdir(d):
