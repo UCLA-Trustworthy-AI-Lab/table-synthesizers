@@ -37,6 +37,18 @@ def test_tabdiff_custom_hyperparams():
     assert model._lr == 5e-4
 
 
+def test_tabdiff_deprecated_steps_alias():
+    with pytest.warns(DeprecationWarning, match="deprecated alias"):
+        model = TabDiffSynthesizer(steps=3)
+
+    assert model._epochs == 3
+
+
+def test_tabdiff_rejects_conflicting_epochs_and_steps():
+    with pytest.raises(ValueError, match="either `epochs` or the deprecated `steps` alias"):
+        TabDiffSynthesizer(epochs=4, steps=3)
+
+
 # ------------------------------------------------------------------
 # Fit + Sample (all use epochs=1 fast path)
 # ------------------------------------------------------------------

@@ -22,7 +22,9 @@ class NFlowSynthesizer(BaseSynthesizer):
     Only supports DataFrame input (not DataLoader).
 
     Synthcity plugin parameters (passed via config dict):
-        n_iter (int): Training iterations. Default: 1000.
+        n_iter (int): NFlow training iterations as interpreted by synthcity.
+            The outer stg wrapper maps its public ``epochs`` value to
+            synthcity's ``n_iter``. Default: 1000.
         n_layers_hidden (int): Hidden layers. Default: 1.
         n_units_hidden (int): Units per hidden layer. Default: 100.
         batch_size (int): Training batch size. Default: 200.
@@ -83,7 +85,8 @@ class NFlowSynthesizer(BaseSynthesizer):
         # Build synthcity plugin kwargs
         plugin_kwargs = dict(self._synthcity_kwargs)
 
-        # Map 'epochs' to 'n_iter' for consistency with other synthesizers
+        # The outer stg API exposes `epochs`; synthcity NFlow consumes that
+        # budget through its `n_iter` parameter.
         if hasattr(self, '_epochs') and self._epochs is not None and 'n_iter' not in plugin_kwargs:
             plugin_kwargs['n_iter'] = self._epochs
 
