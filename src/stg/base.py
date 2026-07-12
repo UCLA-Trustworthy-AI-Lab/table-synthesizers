@@ -83,9 +83,10 @@ class BaseSynthesizer:
       >>> samples = model.generate(100)             # calls _generate(), returns torch.Tensor
       >>> df_out = model.sample(100, return_dataframe=True)
   """
-  def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, seed: int = None,
+  def __init__(self, data_info: Optional[Dict[str, Any]] = None, checkpoint_interval_seconds: Optional[int] = None,
+               epochs: Optional[int] = None, messageSender: Optional[Any] = None, seed: int = None,
                enable_data_manager: bool = True, enable_config_manager: bool = True,
-               data_dir: Optional[str] = None, config_dir: Optional[str] = None, **kwargs):
+               data_dir: Optional[str] = None, config_dir: Optional[str] = None, **kwargs: Any):
     """Initialize the synthesizer.
 
     Args:
@@ -144,9 +145,9 @@ class BaseSynthesizer:
   
   def train(
         self,
-        train_data,
-        batch_size=32
-    ):
+        train_data: "pd.DataFrame | DataLoader",
+        batch_size: int = 32
+    ) -> None:
     """Train the synthesizer.
 
     Handles device setup, seeding, DataFrame-to-DataLoader conversion, and
@@ -222,7 +223,7 @@ class BaseSynthesizer:
   def _train(self, train_data):
     raise NotImplementedError("Training method need to be implemented by child synthesizers!")
     
-  def generate(self, n, condition=None):
+  def generate(self, n: int, condition: Optional[DataLoader] = None) -> torch.Tensor:
     """Generate synthetic samples.
 
     Delegates directly to :meth:`_generate`. Use :meth:`sample` for an
@@ -236,10 +237,10 @@ class BaseSynthesizer:
     Returns:
         torch.Tensor: Raw generated samples in encoded space.
     """
-        
+
     return self._generate(n, condition)
 
-  def fit(self, data, batch_size=32):
+  def fit(self, data: "pd.DataFrame | DataLoader", batch_size: int = 32) -> None:
     """sklearn-style interface for training.
     
     This is a convenience method that delegates to train().
@@ -251,7 +252,7 @@ class BaseSynthesizer:
     """
     self.train(data, batch_size=batch_size)
 
-  def sample(self, n_samples, return_dataframe=False):
+  def sample(self, n_samples: int, return_dataframe: bool = False) -> "torch.Tensor | pd.DataFrame":
     """sklearn-style interface for generation.
     
     This is a convenience method that delegates to generate() and optionally
@@ -335,7 +336,7 @@ class BaseSynthesizer:
         # Set _device for backward compatibility
         self._device = self.device
 
-  def get_optimal_batch_size(self, dataset_size, default_batch_size=128):
+  def get_optimal_batch_size(self, dataset_size: int, default_batch_size: int = 128) -> int:
         """
         Calculate optimal batch size based on GPU memory and dataset size.
 
@@ -482,7 +483,7 @@ class BaseSynthesizer:
     
     return encoded_df, data_info
   
-  def decode_samples(self, samples):
+  def decode_samples(self, samples: "torch.Tensor | np.ndarray") -> pd.DataFrame:
     """Decode generated samples back to original DataFrame format"""
     if isinstance(samples, torch.Tensor):
         samples = samples.detach().cpu().numpy()
@@ -527,7 +528,7 @@ class BaseSynthesizer:
   # DataManager Integration Methods
   # ============================================================================
 
-  def save_checkpoint_to_manager(self, checkpoint_name: str = None, metadata: Optional[Dict] = None):
+  def save_checkpoint_to_manager(self, checkpoint_name: str = None, metadata: Optional[Dict] = None) -> Optional[str]:
     """
     Save model checkpoint using DataManager.
 
@@ -572,7 +573,7 @@ class BaseSynthesizer:
     self._logger.info(f"Checkpoint saved: {checkpoint_path}")
     return checkpoint_path
 
-  def load_checkpoint_from_manager(self, checkpoint_name: str = 'final_model'):
+  def load_checkpoint_from_manager(self, checkpoint_name: str = 'final_model') -> bool:
     """
     Load model checkpoint using DataManager.
 
@@ -614,8 +615,8 @@ class BaseSynthesizer:
     self._logger.info(f"Checkpoint loaded: {checkpoint_name}, metadata: {metadata}")
     return True
 
-  def save_samples_to_manager(self, samples, sample_name: str = None,
-                               format: str = 'csv', metadata: Optional[Dict] = None):
+  def save_samples_to_manager(self, samples: "torch.Tensor | np.ndarray | pd.DataFrame", sample_name: str = None,
+                               format: str = 'csv', metadata: Optional[Dict] = None) -> Optional[str]:
     """
     Save generated samples using DataManager.
 
@@ -657,7 +658,7 @@ class BaseSynthesizer:
     return samples_path
 
   def save_preprocessed_data_to_manager(self, data_dict: Dict, dataset_name: str,
-                                        metadata: Optional[Dict] = None):
+                                        metadata: Optional[Dict] = None) -> Optional[str]:
     """
     Save preprocessed data using DataManager.
 
@@ -686,7 +687,7 @@ class BaseSynthesizer:
   # ConfigManager Integration Methods
   # ============================================================================
 
-  def load_config_from_manager(self, profile: str = 'default'):
+  def load_config_from_manager(self, profile: str = 'default') -> Optional[Dict]:
     """
     Load configuration for this model using ConfigManager.
 

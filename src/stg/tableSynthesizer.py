@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Optional
 from .base import BaseSynthesizer
 from .identity import Identity
 from .CTGAN import CTGAN
@@ -255,7 +256,8 @@ class TableSynthesizer:
 
     _DEFAULT_MODELS = DEFAULT_MODELS
     _VALID_DTYPES = VALID_DTYPES
-    def __init__(self, model, config=None, data_info=None, **kwarg):
+    def __init__(self, model: "str | BaseSynthesizer", config: Optional[dict] = None,
+                 data_info: Optional[dict] = None, **kwarg: Any):
         """Create a TableSynthesizer wrapping the chosen model.
 
         Args:
@@ -400,9 +402,9 @@ class TableSynthesizer:
 
     def fit(
         self,
-        data,
-        batch_size=32
-    ):
+        data: "pd.DataFrame | torch.utils.data.DataLoader",
+        batch_size: int = 32
+    ) -> None:
         """
             Train the synthesizer using the input data.
 
@@ -446,7 +448,7 @@ class TableSynthesizer:
         """
         self.model.train_from_parquet(file_path, optimize_memory=optimize_memory, batch_size=batch_size)
 
-    def sample(self, n, condition=None, return_dataframe=False):
+    def sample(self, n: int, condition=None, return_dataframe: bool = False) -> "torch.Tensor | pd.DataFrame":
         """Generate synthetic samples
 
         Args:
@@ -467,7 +469,7 @@ class TableSynthesizer:
         return synth_data
 
     
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint: Optional[dict]) -> None:
         """ Load all model parameters and hyperparameters necessary for running a synthesizer.
 
         Args:
@@ -479,11 +481,11 @@ class TableSynthesizer:
         else:
             logging.getLogger(__name__).info("Model initialized!")
 
-    def get_checkpoint(self):
+    def get_checkpoint(self) -> dict:
         """ Return all model parameters and hyperparameters necessary for running a synthesizer.
 
-        Args:
-            checkpoint (dict): parameter names/value pairs.
+        Returns:
+            dict: parameter names/value pairs.
         """
         return self.model.get_state()
 
