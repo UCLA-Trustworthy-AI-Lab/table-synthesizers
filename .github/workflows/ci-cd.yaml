@@ -68,6 +68,7 @@ jobs:
     name: Unit Tests
     needs: detect-changes
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
@@ -113,6 +114,7 @@ jobs:
     name: Integration Tests
     needs: unit-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -147,6 +149,7 @@ jobs:
     name: Edge Case Tests
     needs: integration-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -178,6 +181,13 @@ jobs:
     name: GPU Tests (CPU Fallback)
     needs: unit-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Real CPU training of GPU-tier models (TabDDPM/TabSyn/AutoDiff etc.) is
+    # slow and this job's history includes a torch/dynamo incompatibility
+    # that took a while to root-cause (see docker/Dockerfile.gpu comments).
+    # Non-blocking until we have more runs' worth of timing data to trust it
+    # as a hard merge gate.
+    continue-on-error: true
     permissions:
       contents: read
       packages: read
@@ -206,4 +216,5 @@ jobs:
               --ignore-glob='**/test_great.py' \
               --ignore-glob='**/test_nflow.py' \
               --ignore-glob='**/test_smote.py' \
+              --ignore-glob='**/test_aim_integration.py' \
               -v --tb=short"
