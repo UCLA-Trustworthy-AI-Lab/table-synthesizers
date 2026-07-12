@@ -40,79 +40,74 @@ class SimpleTensorDataset(torch.utils.data.Dataset):
 
 
 class BaseSynthesizer:
-  """
-    The parent class for all synthetic models. This class provides a template for defining custom synthesizers. 
-    Subclasses should override the following methods as needed: __init__(), train(), generate(), get_state(), 
-    load_state(), and optionally init_model().
+  """Abstract base class for all synthetic tabular data generators.
 
-    Attributes
-    ----------
-    model_loaded : bool
-        Indicates whether the model is loaded.
-    checkpoint_interval_seconds : int or None
-        Interval in seconds to checkpoint during training.
-    current_training_loss : float or None
-        Current loss during training.
-    current_epoch : int
-        Current epoch in the training process.
-    _epochs : int or None
-        Total number of epochs for training.
-    passed_training_time : float
-        Total time passed in training.
-    timer : threading.Timer or None
-        Timer for periodic updates during training.
-    messageSender : MessageSender or None
-        Instance of MessageSender for reporting training progress.
+  Provides a unified interface for training and generating synthetic data,
+  including automatic DataFrame encoding, device management, seeding,
+  DataManager/ConfigManager integration, and optional frontend progress reporting.
 
-    Methods
-    -------
-    __init__(checkpoint_interval_seconds=None, epochs=None, messageSender=None, **args, **kwargs)
-        Initializes important parameters for the model with the option to use default values for unspecified parameters.
+  Subclasses must implement:
+      - :meth:`_train`: core training logic, receives a ``torch.DataLoader``
+      - :meth:`_generate`: core generation logic, returns a ``torch.Tensor``
 
-    train(train_data)
-        Trains the synthesizer model.
+  Subclasses may optionally override:
+      - :meth:`get_state` / :meth:`load_state`: for checkpoint serialization
+      - :meth:`_custom_encode_dataframe`: to replace the default MinMax+OneHot encoding
+      - :meth:`apply_config`: to apply model-specific configuration keys
 
-    generate(n)
-        Generates synthetic data samples.
+  Attributes:
+      model_loaded (bool): Whether the model has been loaded from a checkpoint.
+      checkpoint_interval_seconds (int | None): Seconds between frontend progress updates.
+      current_training_loss (float | list | None): Most recent training loss.
+      current_epoch (int): Current training epoch (0-indexed).
+      _epochs (int | None): Total epochs to train.
+      passed_training_time (float): Cumulative training time reported to frontend (seconds).
+      timer (threading.Timer | None): Active progress-reporting timer.
+      messageSender: Object with a ``reportLoss()`` method for frontend progress updates.
+      data_info (dict | None): Column metadata produced by the encoder.
+      encoders (dict): Per-column encoder objects (MinMaxScaler / OneHotEncoder).
+      feature_names (list[str]): Encoded column names after encoding.
+      device (torch.device): Active compute device set by :meth:`set_device`.
+      data_manager (DataManager | None): Handles checkpoint and sample I/O.
+      config_manager (ConfigManager | None): Handles JSON config loading.
 
-    set_device(device=None)
-        Sets the computation device for the model.
-
-    init_model(train_data)
-        Initializes attributes of the synthesizer.
-
-    get_state()
-        Retrieves necessary model states and parameters into a dictionary.
-
-    load_state(checkpoint)
-        Loads the model state from a checkpoint dictionary.
-
-    start_threading()
-        Initiates a timer for sending information to a client at regular intervals.
-
-    stop_threading()
-        Ends threading by cancelling the timer.
-
-    update_frontend()
-        Calculates and sends important training progress information to the client.
+  Example:
+      >>> class MyModel(BaseSynthesizer):
+      ...     def _train(self, train_data):
+      ...         pass  # fit your model on the DataLoader
+      ...     def _generate(self, n, condition=None):
+      ...         return torch.randn(n, 10)
+      ...
+      >>> model = MyModel(epochs=100, seed=42)
+      >>> model.train(df)                           # DataFrame → encoded → DataLoader → _train()
+      >>> samples = model.generate(100)             # calls _generate(), returns torch.Tensor
+      >>> df_out = model.sample(100, return_dataframe=True)
   """
   def __init__(self, data_info=None, checkpoint_interval_seconds=None, epochs=None, messageSender=None, seed: int = None,
                enable_data_manager: bool = True, enable_config_manager: bool = True,
                data_dir: Optional[str] = None, config_dir: Optional[str] = None, **kwargs):
-    """
-      Init important parameters for the model. You can enter parameters from the configuration json file. Parameters with no specification provided will use default values.
+    """Initialize the synthesizer.
 
-      Args:
-          data_info: Information about data transformation
-          checkpoint_interval_seconds: Interval for checkpointing during training
-          epochs: Number of training epochs
-          messageSender: Message sender for reporting progress
-          seed: Random seed for reproducibility
-          enable_data_manager: Enable DataManager for unified storage (default: True)
-          enable_config_manager: Enable ConfigManager for configuration (default: True)
-          data_dir: Base directory for data storage (default: 'data')
-          config_dir: Directory for configuration files (default: 'config')
-          **kwargs: Additional arguments
+    Args:
+        data_info (dict | None): Pre-computed column metadata (``transform_info``,
+            ``encoded_width``, etc.). When ``None``, it is inferred automatically
+            during the first :meth:`train` call on a DataFrame.
+        checkpoint_interval_seconds (int | None): If set, a background thread fires
+            every this many seconds and calls :meth:`update_frontend`.
+        epochs (int | None): Total training epochs. Used for progress estimation.
+        messageSender: Object exposing ``reportLoss(loss, remaining_epochs,
+            remaining_time, message, elapsed_time)`` for frontend callbacks.
+        seed (int | None): Global random seed applied to ``random``, ``numpy``,
+            and ``torch`` before training starts.
+        enable_data_manager (bool): Create a :class:`~stg.data_manager.DataManager`
+            for checkpoint and sample storage. Default ``True``.
+        enable_config_manager (bool): Create a :class:`~stg.config_manager.ConfigManager`
+            for JSON config loading. Default ``True``.
+        data_dir (str | None): Root directory for DataManager storage.
+            Defaults to ``'data'``.
+        config_dir (str | None): Directory for ConfigManager JSON files.
+            Defaults to ``'config'``.
+        **kwargs: Forwarded to subclass ``__init__`` implementations.
     """
     self.model_loaded = False
     self.checkpoint_interval_seconds = checkpoint_interval_seconds
@@ -152,14 +147,22 @@ class BaseSynthesizer:
         train_data,
         batch_size=32
     ):
-    """Train a synthesizer:
-        Args:
-            train_data:
-                Either a pandas DataFrame (will be encoded automatically) or 
-                a tensor dataloader object containing preprocessed training data.
-            batch_size (int): Batch size for DataLoader creation when input is DataFrame.
-        Returns:
-            No return value.
+    """Train the synthesizer.
+
+    Handles device setup, seeding, DataFrame-to-DataLoader conversion, and
+    frontend progress threading before delegating to :meth:`_train`.
+
+    Args:
+        train_data (pd.DataFrame | torch.utils.data.DataLoader): Training data.
+            - **DataFrame**: columns are auto-encoded (MinMax for numeric,
+              OneHot for categorical) and wrapped in a ``DataLoader``.
+            - **DataLoader**: passed directly to :meth:`_train` (caller is
+              responsible for preprocessing).
+        batch_size (int): Batch size used only when ``train_data`` is a DataFrame.
+            Ignored for DataLoader input. Default ``32``.
+
+    Raises:
+        ValueError: If ``train_data`` is neither a DataFrame nor a DataLoader.
     """
     self.start_threading()
     # Set seed deterministically if provided
@@ -220,14 +223,18 @@ class BaseSynthesizer:
     raise NotImplementedError("Training method need to be implemented by child synthesizers!")
     
   def generate(self, n, condition=None):
-    """Sample data similar to the training data.
+    """Generate synthetic samples.
+
+    Delegates directly to :meth:`_generate`. Use :meth:`sample` for an
+    sklearn-style interface that can return a decoded DataFrame.
+
     Args:
-        n (int):
-            Number of samples to generate.
-        condition (torch.dataloader): 
-            A dataloader contains instance level condition to be generated based on.
+        n (int): Number of samples to generate.
+        condition (torch.utils.data.DataLoader | None): Optional instance-level
+            conditioning dataloader. Length must match ``n``.
+
     Returns:
-        torch.tensor()
+        torch.Tensor: Raw generated samples in encoded space.
     """
         
     return self._generate(n, condition)

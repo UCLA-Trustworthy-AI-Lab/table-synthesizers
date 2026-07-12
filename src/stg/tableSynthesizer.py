@@ -183,28 +183,101 @@ if CLLM_AVAILABLE:
 VALID_DTYPES = set(['continuous', 'bounded_continuous', "ordinal", 'binary', "categorical", 'datetime', 'text', 'pii', 'index'])
 
 class TableSynthesizer:
-    """
-        TableSynthesizer does the following:
-        1, takes a tensor dataset as input
-        2, load column to tensor mapping
-        3, initialize synthesizer with configurations
-        4, pass tensor and mapping to selected synthesizer.
-        5, generate synthetic tensor
-        6, return synthetic tensors to preprocessors.
+    """Factory and unified interface for all registered synthesizer models.
+
+    Wraps any :class:`~stg.base.BaseSynthesizer` subclass behind a single
+    ``fit`` / ``sample`` API. Select a model by name string or pass a
+    pre-built instance directly.
+
+    Registered built-in models (availability depends on installed dependencies):
+
+    +------------------------+---------------------+-------------------------------+
+    | Name                   | Backend             | Requires                      |
+    +========================+======================+===============================+
+    | ``"Identity"``         | passthrough          | base                          |
+    +------------------------+---------------------+-------------------------------+
+    | ``"CTGAN"``            | GAN                  | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"PATECTGAN"``        | DP-GAN               | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TVAE"``             | VAE                  | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"CART"``             | decision tree        | sklearn                       |
+    +------------------------+---------------------+-------------------------------+
+    | ``"DPCART"``           | DP decision tree     | sklearn                       |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TabDiff"``          | diffusion            | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TabPFGen"``         | prior-fitted nets    | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TabDDPM"``          | diffusion            | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"AIM"``              | marginal-based       | base                          |
+    +------------------------+---------------------+-------------------------------+
+    | ``"SMOTE"``            | oversampling         | imbalanced-learn>=0.14.1      |
+    +------------------------+---------------------+-------------------------------+
+    | ``"GaussianCopula"``   | copula               | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"BayesianNetwork"``  | graphical model      | synthcity, pgmpy<1.0          |
+    +------------------------+---------------------+-------------------------------+
+    | ``"GREAT"``            | LLM fine-tuning      | synthcity, be-great           |
+    +------------------------+---------------------+-------------------------------+
+    | ``"ARF"``              | random forest        | synthcity                     |
+    +------------------------+---------------------+-------------------------------+
+    | ``"NFlow"``            | normalizing flow     | synthcity                     |
+    +------------------------+---------------------+-------------------------------+
+    | ``"AutoDiff"``         | diffusion            | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TabSyn"``           | VAE + diffusion      | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"LTM_VAE"``          | latent table model   | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"TabPFNUnsupervised"`` | prior-fitted nets  | torch                         |
+    +------------------------+---------------------+-------------------------------+
+    | ``"CLLM"``             | LLM-based            | torch                         |
+    +------------------------+---------------------+-------------------------------+
+
+    Example:
+        >>> import pandas as pd
+        >>> from stg import TableSynthesizer
+        >>>
+        >>> df = pd.read_csv("data.csv")
+        >>>
+        >>> # Train by model name — no data_info needed with DataFrame input
+        >>> ts = TableSynthesizer("CTGAN", config={"epochs": 300})
+        >>> ts.fit(df)
+        >>> synthetic = ts.sample(1000, return_dataframe=True)
+        >>>
+        >>> # Register and use a custom model
+        >>> TableSynthesizer.register_model({"MyModel": MyModelClass})
+        >>> ts2 = TableSynthesizer("MyModel", config={"epochs": 50})
     """
 
     _DEFAULT_MODELS = DEFAULT_MODELS
     _VALID_DTYPES = VALID_DTYPES
     def __init__(self, model, config=None, data_info=None, **kwarg):
-        """
-        An interface that allows the construction and selection of different synthesizers. It reduces the need for changing the code each time we want to run a different synthesizer.
+        """Create a TableSynthesizer wrapping the chosen model.
 
         Args:
-            model (str or BaseSynthesizer): choice of synthesizer model name or instance.
-            config (dict): training parameters. Optional when using DataFrame input.
-            data_info (dict): metadata of transformed table. Optional when using DataFrame input.
+            model (str | BaseSynthesizer): Model to use.
+                - **str**: name of a registered model (see class docstring for full list).
+                - **BaseSynthesizer**: pre-built synthesizer instance used as-is.
+            config (dict | None): Hyperparameters forwarded to the model constructor.
+                Keys depend on the chosen model. Common keys: ``epochs``, ``batch_size``,
+                ``embedding_dim``, ``seed``. Default ``{}``.
+            data_info (dict | None): Pre-computed column metadata. Required when
+                passing encoded tensors via DataLoader; omit when using the
+                DataFrame API (encoding is handled automatically).
+            **kwarg: Reserved for future use.
+
+        Raises:
+            ValueError: If ``model`` is a string not in the model registry, or if
+                ``data_info`` fails schema validation.
+
+        Example:
+            >>> ts = TableSynthesizer("CTGAN", config={"epochs": 100, "seed": 0})
         """
-        
+
         if config is None:
             config = {}
             
