@@ -5,7 +5,6 @@
 set -e
 
 VENV_PATH="${1:-.venv}"
-TARGET_FILE="$VENV_PATH/lib/python3.12/site-packages/synthcity/plugins/generic/plugin_bayesian_network.py"
 
 echo "========================================="
 echo "Synthcity pgmpy Compatibility Patcher"
@@ -19,6 +18,16 @@ if [ ! -d "$VENV_PATH" ]; then
     exit 1
 fi
 
+# Discover the venv's python3.x lib directory instead of hardcoding a version,
+# so this works regardless of which Python 3.1x the venv was created with.
+PYTHON_LIB_DIR=$(find "$VENV_PATH/lib" -maxdepth 1 -type d -name "python3.*" 2>/dev/null | sort -V | tail -1)
+if [ -z "$PYTHON_LIB_DIR" ]; then
+    echo "❌ Error: No python3.x lib directory found under $VENV_PATH/lib"
+    echo "Usage: $0 [venv_path]"
+    exit 1
+fi
+TARGET_FILE="$PYTHON_LIB_DIR/site-packages/synthcity/plugins/generic/plugin_bayesian_network.py"
+
 # Check if target file exists
 if [ ! -f "$TARGET_FILE" ]; then
     echo "❌ Error: Target file not found:"
@@ -26,8 +35,7 @@ if [ ! -f "$TARGET_FILE" ]; then
     echo ""
     echo "This might mean:"
     echo "  1. synthcity is not installed"
-    echo "  2. Python version is not 3.12"
-    echo "  3. synthcity is installed in a different location"
+    echo "  2. synthcity is installed in a different location"
     exit 1
 fi
 
