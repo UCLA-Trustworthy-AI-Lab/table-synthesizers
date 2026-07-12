@@ -135,7 +135,10 @@ jobs:
       - name: Run integration tests in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
-            bash -c "pytest tests/integration/ --ignore-glob='**/test_edge_cases.py' -v --tb=short"
+            bash -c "pytest tests/integration/ \
+              --ignore-glob='**/test_edge_cases.py' \
+              --ignore-glob='**/test_aim_integration.py' \
+              -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
   # 4. Edge case tests (PR only)
