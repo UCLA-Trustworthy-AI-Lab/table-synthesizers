@@ -83,7 +83,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # 5. Install package in editable mode
 COPY src/ src/
-COPY setup.cfg pyproject.toml ./
+COPY pyproject.toml ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -e .
@@ -123,7 +123,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV="/opt/venv"
 
 COPY --from=builder /app/src          src/
-COPY --from=builder /app/setup.cfg    ./
 COPY --from=builder /app/pyproject.toml ./
 
 COPY config/ config/
