@@ -6,8 +6,15 @@ Analyzes PR changes using Google Gemini API and posts review comments.
 
 import os
 import sys
+import time
 from google import genai
 from github import Github, Auth
+
+# Errors worth retrying: transient server-side overload/rate-limit, not
+# auth/config problems (those would just fail again identically).
+RETRYABLE_ERROR_MARKERS = ('503', 'UNAVAILABLE', '429', 'RESOURCE_EXHAUSTED')
+MAX_ATTEMPTS_PER_MODEL = 3
+RETRY_BACKOFF_SECONDS = (5, 15)  # delay before attempt 2, then attempt 3
 
 def get_pr_diff(repo, pr_number):
     """Fetch the PR diff from GitHub."""
@@ -59,16 +66,24 @@ Changes:
 {diff_content}"""
 
     for name in model_names:
-        try:
-            print(f"Attempting to generate review with model: {name}")
-            response = client.models.generate_content(
-                model=name,
-                contents=prompt
-            )
-            return response.text
-        except Exception as e:
-            print(f"Warning: Failed with {name}: {e}")
-            
+        for attempt in range(1, MAX_ATTEMPTS_PER_MODEL + 1):
+            try:
+                print(f"Attempting to generate review with model: {name} (attempt {attempt}/{MAX_ATTEMPTS_PER_MODEL})")
+                response = client.models.generate_content(
+                    model=name,
+                    contents=prompt
+                )
+                return response.text
+            except Exception as e:
+                is_retryable = any(marker in str(e) for marker in RETRYABLE_ERROR_MARKERS)
+                if is_retryable and attempt < MAX_ATTEMPTS_PER_MODEL:
+                    delay = RETRY_BACKOFF_SECONDS[attempt - 1]
+                    print(f"Warning: Failed with {name} (transient, retrying in {delay}s): {e}")
+                    time.sleep(delay)
+                    continue
+                print(f"Warning: Failed with {name}: {e}")
+                break
+
     print("Error: Could not generate review with any Gemini models. Please check your API key and quota.", file=sys.stderr)
     sys.exit(1)
 
