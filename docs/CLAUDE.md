@@ -1,6 +1,6 @@
 # Development Guide
 
-Detailed development reference for the table-synthesizers project. For a quick overview, see the root [CLAUDE.md](../CLAUDE.md).
+Detailed development reference for the table-synthesizers project. For a quick overview, see the root [CLAUDE.md](https://github.com/UCLA-Trustworthy-AI-Lab/table-synthesizers/blob/main/CLAUDE.md).
 
 ## Table of Contents
 

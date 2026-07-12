@@ -212,6 +212,11 @@ table-synthesizers/
 │   ├── CART/                      # Decision tree
 │   ├── DPCART/                    # DP decision tree
 │   ├── AIM/                       # Adaptive Iterative Mechanism
+│   ├── GaussianCopula/            # Copula-based synthesis
+│   ├── TabDiff/                   # Diffusion (official repo wrapper)
+│   ├── TabPFGen/                  # Prior-fitted networks
+│   ├── TabPFNUnsupervised/        # TabPFN-based unsupervised generation
+│   ├── CLLM/                      # LLM-based (OpenAI) synthesis
 │   ├── BayesianNetwork/           # Bayesian network (synthcity)
 │   ├── ARF/                       # Adversarial Random Forest (synthcity)
 │   ├── NFlow/                     # Normalizing flows (synthcity)
@@ -224,10 +229,20 @@ table-synthesizers/
 ├── tests/                         # Test suite
 │   ├── unit/                      # Unit tests per model
 │   └── integration/               # Integration and end-to-end tests
-├── docs/                          # Documentation
+├── scripts/                       # Standalone eval/analysis scripts
+├── example/                       # Demo and benchmark scripts
+├── docker/                        # Dockerfiles (base/gpu/synthcity tiers)
+├── patches/                       # Third-party compatibility patches
+├── docs/                          # Documentation + mkdocs API reference
+├── mkdocs.yml                     # mkdocs site configuration
 ├── train_all_compatible_models.py # Main multi-model training script
 ├── run_comprehensive_tests.sh     # Test runner script
-├── requirements.txt               # Python dependencies
+├── requirements.txt               # Base Python dependencies
+├── requirements-gpu.txt           # GPU (CUDA) tier dependencies
+├── requirements-cpu.txt           # CPU-only torch tier dependencies
+├── requirements-synthcity.txt     # Synthcity plugin tier dependencies
+├── requirements-docs.txt          # mkdocs build dependencies
+├── requirements-optional.txt      # Optional per-model extras
 └── pyproject.toml                 # Package configuration
 ```
 
