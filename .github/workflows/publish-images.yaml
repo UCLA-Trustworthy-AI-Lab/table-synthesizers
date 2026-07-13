@@ -38,13 +38,13 @@ jobs:
         include:
           - tier: base
             dockerfile: docker/Dockerfile.base
-            image: ghcr.io/ohsono/table-synthesizers-base
+            image: ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-base
           - tier: gpu
             dockerfile: docker/Dockerfile.gpu
-            image: ghcr.io/ohsono/table-synthesizers-gpu
+            image: ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-gpu
           - tier: synthcity
             dockerfile: docker/Dockerfile.synthcity
-            image: ghcr.io/ohsono/table-synthesizers-synthcity
+            image: ghcr.io/ucla-trustworthy-ai-lab/table-synthesizers-synthcity
 
     steps:
       - uses: actions/checkout@v4
