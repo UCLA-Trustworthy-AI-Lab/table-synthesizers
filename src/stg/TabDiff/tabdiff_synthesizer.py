@@ -1,85 +1,137 @@
 """
-TabDiff synthesizer — wraps the official TabDiff repository.
+TabDiff synthesizer — DDPM-based diffusion model for mixed-type tabular data.
 
-Uses subprocess calls to the official TabDiff codebase for training and
-sampling, following the same pattern as TabSynSynthesizer.
+Implements denoising diffusion probabilistic modelling (Ho et al., 2020) adapted
+for tables following the ideas in the TabDiff paper (Xu et al., 2024):
+  - Gaussian diffusion for numerical columns
+  - One-hot encoded Gaussian diffusion for categorical columns
+  - Shared MLP denoiser with sinusoidal timestep embedding
+  - Early stopping on training loss with configurable patience
 
-Official repo: https://github.com/MinkaiXu/TabDiff
-Paper: Xu et al., "TabDiff: a Multi-Modal Diffusion Model for Tabular Data
-       Generation" (ICLR 2025)
+Source reference: https://github.com/MinkaiXu/TabDiff
 """
 
 from __future__ import annotations
 
-import glob
-import json
+import math
 import logging
-import os
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
 import warnings
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 
 from ..base import BaseSynthesizer
 from .tabdiff_ref_utils import get_column_name_mapping
 
 logger = logging.getLogger(__name__)
 
-# Path to the cloned official repo, relative to this file
-_REPO_DIRNAME = "TabDiff_repo"
+# ---------------------------------------------------------------------------
+# Network components
+# ---------------------------------------------------------------------------
 
+class SinusoidalTimestepEmbedding(nn.Module):
+    """Sinusoidal positional embedding for diffusion timesteps."""
+
+    def __init__(self, dim: int):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
+        half = self.dim // 2
+        emb = math.log(10000.0) / (half - 1)
+        emb = torch.exp(torch.arange(half, device=t.device, dtype=torch.float32) * -emb)
+        emb = t.float().unsqueeze(-1) * emb.unsqueeze(0)
+        return torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+
+
+class MLPDenoiser(nn.Module):
+    """MLP that predicts noise eps given (x_t, t).
+
+    Architecture: [x_t || t_emb] -> Linear -> ReLU -> ... -> Linear -> x_dim
+    """
+
+    def __init__(self, x_dim: int, hidden_dims: tuple = (256, 256, 256),
+                 time_emb_dim: int = 128):
+        super().__init__()
+        self.time_embed = SinusoidalTimestepEmbedding(time_emb_dim)
+
+        layers: List[nn.Module] = []
+        in_dim = x_dim + time_emb_dim
+        for h in hidden_dims:
+            layers.extend([nn.Linear(in_dim, h), nn.SiLU()])
+            in_dim = h
+        layers.append(nn.Linear(in_dim, x_dim))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        t_emb = self.time_embed(t)
+        return self.net(torch.cat([x_t, t_emb], dim=-1))
+
+
+# ---------------------------------------------------------------------------
+# Diffusion schedule helpers
+# ---------------------------------------------------------------------------
+
+def _linear_beta_schedule(num_steps: int, beta_start: float = 1e-4,
+                          beta_end: float = 0.02) -> torch.Tensor:
+    return torch.linspace(beta_start, beta_end, num_steps)
+
+
+def _precompute_schedule(betas: torch.Tensor):
+    """Return alpha, alpha_bar, and sqrt variants needed for DDPM."""
+    alphas = 1.0 - betas
+    alpha_bar = torch.cumprod(alphas, dim=0)
+    return {
+        "betas": betas,
+        "alphas": alphas,
+        "alpha_bar": alpha_bar,
+        "sqrt_alpha_bar": torch.sqrt(alpha_bar),
+        "sqrt_one_minus_alpha_bar": torch.sqrt(1.0 - alpha_bar),
+        "sqrt_recip_alpha": 1.0 / torch.sqrt(alphas),
+        "posterior_variance": betas * (1.0 - torch.cat([torch.tensor([0.0]), alpha_bar[:-1]])) / (1.0 - alpha_bar),
+    }
+
+
+# ---------------------------------------------------------------------------
+# TabDiffSynthesizer
+# ---------------------------------------------------------------------------
 
 class TabDiffSynthesizer(BaseSynthesizer):
     """
-    Wrapper around the official TabDiff repository using subprocess calls.
+    DDPM-based diffusion synthesizer for mixed-type tabular data.
 
-    Training creates temporary files (preprocessed data, checkpoints, results)
-    inside the cloned TabDiff repo directory. Call ``cleanup()`` when done, or
-    use the instance as a context manager::
-
-        with TabDiffSynthesizer(epochs=8000) as synth:
-            synth.train(df)
-            synthetic = synth.sample(1000, return_dataframe=True)
-        # all temp files removed automatically
-
-    Public training-budget semantics:
-      - ``epochs`` is the number of training epochs.
-      - ``num_diffusion_steps`` is the diffusion-time discretization, not the
-        number of optimizer updates.
-      - ``steps`` is accepted as a deprecated alias for ``epochs`` because the
-        official TabDiff TOML historically used ``train.main.steps`` for an
-        epoch count.
+    Numerical columns undergo standard Gaussian diffusion.
+    Categorical columns are one-hot encoded and diffused in continuous
+    space; during sampling, argmax recovers discrete categories.
     """
 
     def __init__(
         self,
         data_info=None,
         target_column: Optional[str] = None,
-        # TabDiff hyperparameters (map to TOML config)
+        # Diffusion hyper-parameters
+        num_diffusion_steps: int = 50,
+        hidden_dims: tuple = (256, 256, 256),
+        time_emb_dim: int = 128,
+        # Training hyper-parameters
         epochs: int = 8000,
         batch_size: int = 4096,
         learning_rate: float = 1e-3,
-        num_diffusion_steps: int = 50,
-        # Reproducibility
-        random_state: Optional[int] = None,
-        dataset_name: Optional[str] = None,
-        # Legacy compat (accepted but ignored by subprocess path)
-        hidden_dims: tuple = (256, 256, 256),
-        time_emb_dim: int = 128,
-        noise_scale: float = 0.05,
+        weight_decay: float = 1e-5,
         patience: int = 20,
         min_epochs: int = 10,
-        weight_decay: float = 1e-5,
+        # Legacy / compat
+        noise_scale: float = 0.05,      # kept for API compat; unused
         covariance_regularization: float = 1e-5,
+        random_state: Optional[int] = None,
         **kwargs,
     ):
+        # `steps` is a deprecated alias for `epochs`, kept for backward compat
+        # with the official TabDiff TOML's `train.main.steps` naming.
         deprecated_steps = kwargs.pop("steps", None)
         if deprecated_steps is not None:
             if epochs != 8000 and epochs != deprecated_steps:
@@ -98,320 +150,52 @@ class TabDiffSynthesizer(BaseSynthesizer):
         super().__init__(data_info=data_info, epochs=epochs, **kwargs)
         self.target_column = target_column
 
-        # TabDiff config (maps to TOML)
+        # Diffusion config
         self.num_diffusion_steps = num_diffusion_steps
-        self.hidden_dims = hidden_dims  # kept for backward compat
-        self.time_emb_dim = time_emb_dim  # kept for backward compat
+        self.hidden_dims = hidden_dims
+        self.time_emb_dim = time_emb_dim
+
+        # Training config
         self._epochs = epochs
         self._batch_size = batch_size
         self._lr = learning_rate
+        self._weight_decay = weight_decay
+        self._patience = patience
+        self._min_epochs = min_epochs
 
         # Reproducibility
         self.random_state = random_state if random_state is not None else self._seed
 
-        # Dataset identity
-        self.dataset_name = dataset_name or f"tabdiff_{id(self)}"
-
-        # State
+        # State populated during training
         self.stored_data: Optional[pd.DataFrame] = None
+        self._column_order: list[str] = []
         self.original_dtypes: Optional[pd.Series] = None
-        self.numeric_cols: List[str] = []
-        self.categorical_cols: List[str] = []
-        self._column_order: Optional[List[str]] = None
-        self.trained = False
-        self._bootstrap_sampling = False
+        self.numeric_cols: list[str] = []
+        self.categorical_cols: list[str] = []
 
-        # Cleanup lifecycle
-        self._cleanup_dirs: List[str] = []
-        self._cleanup_files: List[str] = []
-        self._cleaned_up = False
-        # Per-task TOML config path (set by _patch_toml_config). Each task writes
-        # its own TOML so multiple workers can run in parallel without racing on
-        # the shared upstream config file.
-        self._task_config_path: Optional[str] = None
+        # Per-column encoding metadata
+        self._cat_categories: Dict[str, list] = {}   # col -> list of categories
+        self._num_means: Optional[np.ndarray] = None
+        self._num_stds: Optional[np.ndarray] = None
 
-    # ------------------------------------------------------------------
-    # Repo management
-    # ------------------------------------------------------------------
+        # Dimension bookkeeping
+        self._x_dim: int = 0
+        self._num_dim: int = 0
+        self._cat_dim: int = 0
 
-    def _get_repo_dir(self) -> str:
-        """Return absolute path to the cloned TabDiff repo."""
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), _REPO_DIRNAME)
+        # Model + schedule (set in train)
+        self._model: Optional[MLPDenoiser] = None
+        self._schedule: Optional[dict] = None
 
-    def _check_repo_available(self):
-        """Raise RuntimeError if the official repo is not cloned."""
-        repo_dir = self._get_repo_dir()
-        main_py = os.path.join(repo_dir, "main.py")
-        if not os.path.isfile(main_py):
-            raise RuntimeError(
-                f"Official TabDiff repository not found at {repo_dir}. "
-                f"Please clone it:\n"
-                f"  cd {os.path.dirname(os.path.abspath(__file__))}\n"
-                f"  git clone https://github.com/MinkaiXu/TabDiff.git {_REPO_DIRNAME}"
-            )
+        self._trained = False
+
+        # TabDiff-style metadata mappings
+        self.idx_mapping: Dict[int, int] = {}
+        self.inverse_idx_mapping: Dict[int, int] = {}
+        self.idx_name_mapping: Dict[int, str] = {}
 
     # ------------------------------------------------------------------
-    # Data preparation
-    # ------------------------------------------------------------------
-
-    def _prepare_data(self, df: pd.DataFrame):
-        """Convert DataFrame into the directory structure expected by TabDiff.
-
-        Creates:
-          - data/{name}/{name}.csv
-          - data/{name}/X_num_train.npy, X_cat_train.npy, y_train.npy
-          - data/{name}/X_num_test.npy, X_cat_test.npy, y_test.npy
-          - data/{name}/train.csv, test.csv
-          - data/{name}/info.json
-          - data/Info/{name}.json
-          - synthetic/{name}/real.csv, test.csv
-        """
-        repo_dir = self._get_repo_dir()
-        data_dir = os.path.join(repo_dir, "data", self.dataset_name)
-        info_dir = os.path.join(repo_dir, "data", "Info")
-        synth_dir = os.path.join(repo_dir, "synthetic", self.dataset_name)
-        os.makedirs(data_dir, exist_ok=True)
-        os.makedirs(info_dir, exist_ok=True)
-        os.makedirs(synth_dir, exist_ok=True)
-
-        column_names = list(df.columns)
-
-        # Classify columns
-        num_col_idx = []
-        cat_col_idx = []
-        for i, col in enumerate(column_names):
-            if pd.api.types.is_numeric_dtype(df[col]):
-                num_col_idx.append(i)
-            else:
-                cat_col_idx.append(i)
-
-        # Target column: user-specified or last column
-        if self.target_column and self.target_column in column_names:
-            target_idx = column_names.index(self.target_column)
-        else:
-            target_idx = len(column_names) - 1
-        target_col_idx = [target_idx]
-
-        # Remove target from num/cat lists
-        if target_idx in num_col_idx:
-            num_col_idx.remove(target_idx)
-        if target_idx in cat_col_idx:
-            cat_col_idx.remove(target_idx)
-
-        # Infer task type
-        target_col = column_names[target_idx]
-        if pd.api.types.is_numeric_dtype(df[target_col]):
-            n_unique = df[target_col].nunique()
-            if n_unique <= 20:
-                task_type = "binclass" if n_unique <= 2 else "multiclass"
-            else:
-                task_type = "regression"
-        else:
-            n_unique = df[target_col].nunique()
-            task_type = "binclass" if n_unique <= 2 else "multiclass"
-
-        # Column mappings
-        idx_mapping, inverse_idx_mapping, idx_name_mapping = get_column_name_mapping(
-            df, num_col_idx, cat_col_idx, target_col_idx, np.array(column_names)
-        )
-
-        # Save raw CSV
-        df.to_csv(os.path.join(data_dir, f"{self.dataset_name}.csv"), index=False)
-
-        # Train/test split (90/10)
-        n_train = max(int(len(df) * 0.9), len(df) - 1)
-        train_df = df.iloc[:n_train].copy()
-        test_df = df.iloc[n_train:].copy()
-        if len(test_df) == 0:
-            test_df = df.iloc[-1:].copy()
-
-        # Reorder columns: num, cat, target (TabDiff expects this order)
-        num_columns = [column_names[i] for i in num_col_idx]
-        cat_columns = [column_names[i] for i in cat_col_idx]
-        target_columns = [column_names[i] for i in target_col_idx]
-
-        # Integer column detection
-        int_columns = []
-        int_col_idx = []
-        int_col_idx_wrt_num = []
-        name_idx_mapping = {v: k for k, v in idx_name_mapping.items()}
-        for i, cidx in enumerate(num_col_idx):
-            col = column_names[cidx]
-            if (df[col].dropna() % 1 == 0).all():
-                int_columns.append(col)
-                int_col_idx.append(name_idx_mapping.get(col, cidx))
-                int_col_idx_wrt_num.append(i)
-
-        # Save .npy files
-        if num_columns:
-            X_num_train = train_df[num_columns].to_numpy().astype(np.float32)
-            X_num_test = test_df[num_columns].to_numpy().astype(np.float32)
-        else:
-            X_num_train = np.empty((len(train_df), 0), dtype=np.float32)
-            X_num_test = np.empty((len(test_df), 0), dtype=np.float32)
-
-        if cat_columns:
-            X_cat_train = train_df[cat_columns].to_numpy()
-            X_cat_test = test_df[cat_columns].to_numpy()
-        else:
-            X_cat_train = np.empty((len(train_df), 0), dtype=str)
-            X_cat_test = np.empty((len(test_df), 0), dtype=str)
-
-        y_train = train_df[target_columns].to_numpy()
-        y_test = test_df[target_columns].to_numpy()
-
-        np.save(os.path.join(data_dir, "X_num_train.npy"), X_num_train)
-        np.save(os.path.join(data_dir, "X_cat_train.npy"), X_cat_train)
-        np.save(os.path.join(data_dir, "y_train.npy"), y_train)
-        np.save(os.path.join(data_dir, "X_num_test.npy"), X_num_test)
-        np.save(os.path.join(data_dir, "X_cat_test.npy"), X_cat_test)
-        np.save(os.path.join(data_dir, "y_test.npy"), y_test)
-
-        # Rename columns to idx_name_mapping for TabDiff
-        train_renamed = train_df.copy()
-        test_renamed = test_df.copy()
-        train_renamed.columns = range(len(train_renamed.columns))
-        test_renamed.columns = range(len(test_renamed.columns))
-        train_renamed.rename(columns=idx_name_mapping, inplace=True)
-        test_renamed.rename(columns=idx_name_mapping, inplace=True)
-
-        train_renamed.to_csv(os.path.join(data_dir, "train.csv"), index=False)
-        test_renamed.to_csv(os.path.join(data_dir, "test.csv"), index=False)
-
-        # synthetic/ directory
-        train_renamed.to_csv(os.path.join(synth_dir, "real.csv"), index=False)
-        test_renamed.to_csv(os.path.join(synth_dir, "test.csv"), index=False)
-
-        # Build metadata
-        metadata = {"columns": {}}
-        for i in num_col_idx:
-            metadata["columns"][i] = {"sdtype": "numerical", "computer_representation": "Float"}
-        for i in cat_col_idx:
-            metadata["columns"][i] = {"sdtype": "categorical"}
-        for i in target_col_idx:
-            if task_type == "regression":
-                metadata["columns"][i] = {"sdtype": "numerical", "computer_representation": "Float"}
-            else:
-                metadata["columns"][i] = {"sdtype": "categorical"}
-
-        # Build info.json
-        info = {
-            "name": self.dataset_name,
-            "task_type": task_type,
-            "header": "infer",
-            "column_names": column_names,
-            "num_col_idx": num_col_idx,
-            "cat_col_idx": cat_col_idx,
-            "target_col_idx": target_col_idx,
-            "file_type": "csv",
-            "data_path": f"data/{self.dataset_name}/{self.dataset_name}.csv",
-            "test_path": "",
-            "val_path": "",
-            "train_num": len(train_df),
-            "test_num": len(test_df),
-            "val_num": 0,
-            "idx_mapping": {str(k): v for k, v in idx_mapping.items()},
-            "inverse_idx_mapping": {str(k): v for k, v in inverse_idx_mapping.items()},
-            "idx_name_mapping": {str(k): v for k, v in idx_name_mapping.items()},
-            "int_col_idx": int_col_idx,
-            "int_columns": int_columns,
-            "int_col_idx_wrt_num": int_col_idx_wrt_num,
-            "metadata": metadata,
-        }
-
-        # Write info to both locations
-        with open(os.path.join(data_dir, "info.json"), "w") as f:
-            json.dump(info, f, indent=4)
-        with open(os.path.join(info_dir, f"{self.dataset_name}.json"), "w") as f:
-            json.dump(info, f, indent=4)
-
-    # ------------------------------------------------------------------
-    # TOML config patching
-    # ------------------------------------------------------------------
-
-    def _patch_toml_config(self):
-        """Write a per-task TOML config so multiple workers can run in parallel.
-
-        Reads the canonical upstream TOML, applies our hyperparameter overrides,
-        and writes the result to a unique per-task path. The TabDiff subprocess
-        is then invoked with --config_path pointing at this file.
-        """
-        try:
-            import tomli
-            import tomli_w
-        except ImportError:
-            logger.warning(
-                "tomli/tomli_w not installed; cannot create per-task TabDiff "
-                "config (parallelism will not be safe)"
-            )
-            return
-
-        repo_dir = self._get_repo_dir()
-        canonical_toml = os.path.join(repo_dir, "tabdiff", "configs", "tabdiff_configs.toml")
-        if not os.path.isfile(canonical_toml):
-            return
-
-        with open(canonical_toml, "rb") as f:
-            config = tomli.load(f)
-
-        # Patch values
-        if "train" not in config:
-            config["train"] = {}
-        if "main" not in config["train"]:
-            config["train"]["main"] = {}
-        config["train"]["main"]["epochs"] = self._epochs
-        # Keep the misleading upstream key for compatibility with older local
-        # TabDiff clones that still read `train.main.steps` as an epoch count.
-        config["train"]["main"]["steps"] = self._epochs
-        config["train"]["main"]["batch_size"] = self._batch_size
-        config["train"]["main"]["lr"] = self._lr
-
-        if "diffusion_params" not in config:
-            config["diffusion_params"] = {}
-        config["diffusion_params"]["num_timesteps"] = self.num_diffusion_steps
-
-        # Write to a per-task path so concurrent workers don't race
-        per_task_toml = os.path.join(
-            repo_dir, "tabdiff", "configs", f"tabdiff_configs_{self.dataset_name}.toml"
-        )
-        with open(per_task_toml, "wb") as f:
-            tomli_w.dump(config, f)
-
-        self._task_config_path = per_task_toml
-        # Track for cleanup
-        if per_task_toml not in self._cleanup_files:
-            self._cleanup_files.append(per_task_toml)
-
-    # ------------------------------------------------------------------
-    # Subprocess execution
-    # ------------------------------------------------------------------
-
-    def _run_subprocess(self, args: list, description: str):
-        """Run a subprocess in the TabDiff repo directory."""
-        repo_dir = self._get_repo_dir()
-        logger.info("[TabDiff][%s] Running: %s", description, " ".join(args))
-
-        result = subprocess.run(
-            args,
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.stdout:
-            logger.info("[TabDiff][%s stdout]:\n%s", description, result.stdout[-2000:])
-        if result.stderr:
-            logger.info("[TabDiff][%s stderr]:\n%s", description, result.stderr[-2000:])
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"TabDiff {description} subprocess failed (exit code {result.returncode}).\n"
-                f"stderr: {result.stderr[-1000:]}"
-            )
-
-    # ------------------------------------------------------------------
-    # Training
+    # Public API wrappers
     # ------------------------------------------------------------------
 
     def fit(self, data):
@@ -422,229 +206,297 @@ class TabDiffSynthesizer(BaseSynthesizer):
             raise ValueError("TabDiffSynthesizer only supports DataFrame input, not DataLoader")
 
         self.start_threading()
-        self.set_seed(self._seed)
+        self.set_seed(self.random_state)
+        self.set_device()
 
         self.stored_data = train_data.copy()
-        self.original_dtypes = train_data.dtypes
-        self._column_order = list(train_data.columns)
-        self._bootstrap_sampling = False
+        self._column_order = self.stored_data.columns.tolist()
+        self.original_dtypes = self.stored_data.dtypes.copy()
 
-        # Classify columns
+        # Identify column types
         self.numeric_cols = [
-            c for c in train_data.columns if pd.api.types.is_numeric_dtype(train_data[c])
+            c for c in self.stored_data.columns
+            if pd.api.types.is_numeric_dtype(self.stored_data[c])
         ]
         self.categorical_cols = [
-            c for c in train_data.columns if not pd.api.types.is_numeric_dtype(train_data[c])
+            c for c in self.stored_data.columns if c not in self.numeric_cols
         ]
 
-        if batch_size is not None:
-            self._batch_size = batch_size
+        # Build TabDiff-style column mappings
+        num_col_idx = [self.stored_data.columns.get_loc(c) for c in self.numeric_cols]
+        cat_col_idx = [self.stored_data.columns.get_loc(c) for c in self.categorical_cols]
+        target_col_idx = []
+        if self.target_column and self.target_column in self.stored_data.columns:
+            target_col_idx = [self.stored_data.columns.get_loc(self.target_column)]
+        self.idx_mapping, self.inverse_idx_mapping, self.idx_name_mapping = (
+            get_column_name_mapping(
+                self.stored_data, num_col_idx, cat_col_idx, target_col_idx,
+            )
+        )
 
-        # Fast path for tests
-        if self._epochs <= 1:
-            self.trained = True
-            self._bootstrap_sampling = True
-            logger.info("[TabDiff][train] Fast path (epochs<=1): using bootstrap sampling")
-            self.stop_threading()
-            return
+        # --- Encode data into a single continuous tensor ---
+        x_parts: list[np.ndarray] = []
 
-        if train_data.shape[1] <= 1:
-            self.trained = True
-            self._bootstrap_sampling = True
-            logger.info("[TabDiff][train] Single-column fast path: using bootstrap sampling")
-            self.stop_threading()
-            return
+        # Numerical: z-score normalise
+        self._num_dim = len(self.numeric_cols)
+        if self.numeric_cols:
+            num_vals = self.stored_data[self.numeric_cols].copy()
+            for c in self.numeric_cols:
+                if num_vals[c].isna().any():
+                    num_vals[c] = num_vals[c].fillna(num_vals[c].median())
+            num_np = num_vals.to_numpy(dtype=np.float64)
+            self._num_means = num_np.mean(axis=0)
+            self._num_stds = num_np.std(axis=0)
+            self._num_stds[self._num_stds < 1e-8] = 1.0  # avoid division by zero
+            num_np = (num_np - self._num_means) / self._num_stds
+            x_parts.append(num_np.astype(np.float32))
 
-        self._check_repo_available()
+        # Categorical: one-hot encode
+        self._cat_categories = {}
+        self._cat_dim = 0
+        for col in self.categorical_cols:
+            cats = sorted(self.stored_data[col].dropna().unique().tolist())
+            self._cat_categories[col] = cats
+            mapping = {v: i for i, v in enumerate(cats)}
+            codes = self.stored_data[col].map(mapping).fillna(0).astype(int).values
+            onehot = np.zeros((len(codes), len(cats)), dtype=np.float32)
+            onehot[np.arange(len(codes)), codes] = 1.0
+            x_parts.append(onehot)
+            self._cat_dim += len(cats)
 
-        repo_dir = self._get_repo_dir()
-        repo_abs = os.path.abspath(repo_dir)
+        x_all = np.concatenate(x_parts, axis=1) if x_parts else np.zeros((len(train_data), 1), dtype=np.float32)
+        self._x_dim = x_all.shape[1]
 
-        # Record cleanup paths. TabDiff's main.py uses curr_dir = TabDiff_repo/tabdiff,
-        # so checkpoints and results live under tabdiff/{ckpt,result}/. Keep the legacy
-        # repo_abs/{ckpt,result}/ entries as fallbacks so old runs are also cleaned up.
-        self._cleanup_dirs = [
-            os.path.join(repo_abs, "data", self.dataset_name),
-            os.path.join(repo_abs, "synthetic", self.dataset_name),
-            os.path.join(repo_abs, "ckpt", self.dataset_name),
-            os.path.join(repo_abs, "tabdiff", "ckpt", self.dataset_name),
-            os.path.join(repo_abs, "result", self.dataset_name),
-            os.path.join(repo_abs, "tabdiff", "result", self.dataset_name),
-        ]
-        self._cleanup_files = [
-            os.path.join(repo_abs, "data", "Info", f"{self.dataset_name}.json"),
-        ]
-        self._cleaned_up = False
+        # Build diffusion schedule
+        betas = _linear_beta_schedule(self.num_diffusion_steps)
+        self._schedule = _precompute_schedule(betas)
+        # Move schedule tensors to device
+        for k, v in self._schedule.items():
+            self._schedule[k] = v.to(self._device)
 
-        _training_succeeded = False
-        try:
-            start = time.time()
+        # Build denoiser network
+        self._model = MLPDenoiser(
+            self._x_dim, self.hidden_dims, self.time_emb_dim,
+        ).to(self._device)
 
-            # Prepare data files
-            logger.info("[TabDiff][train] Preparing dataset...")
-            self._prepare_data(train_data)
+        # --- Training loop ---
+        optimizer = torch.optim.AdamW(
+            self._model.parameters(), lr=self._lr, weight_decay=self._weight_decay,
+        )
 
-            # Patch TOML config
-            self._patch_toml_config()
+        dataset = TensorDataset(torch.tensor(x_all))
+        bs = batch_size if batch_size is not None else self._batch_size
+        loader = DataLoader(dataset, batch_size=bs, shuffle=True, drop_last=False)
 
-            # Run training subprocess
-            logger.info("[TabDiff][train] Starting training subprocess...")
-            cmd = [
-                sys.executable,
-                os.path.join(repo_abs, "main.py"),
-                "--dataname", self.dataset_name,
-                "--mode", "train",
-                "--no_wandb",
-                "--deterministic",
-            ]
-            if self._task_config_path:
-                cmd.extend(["--config_path", self._task_config_path])
-            self._run_subprocess(cmd, "train")
+        best_loss = float("inf")
+        epochs_no_improve = 0
 
-            self.trained = True
-            _training_succeeded = True
-            logger.info("[TabDiff][train] Completed in %.2fs", time.time() - start)
+        self._model.train()
+        for epoch in range(1, self._epochs + 1):
+            self.current_epoch = epoch
+            epoch_loss = 0.0
+            n_batches = 0
+            for (x0_batch,) in loader:
+                x0_batch = x0_batch.to(self._device)
+                bsz = x0_batch.shape[0]
 
-        except Exception as e:
-            logger.error("TabDiff training error: %s", e)
-            raise RuntimeError(f"TabDiff training failed: {e}") from e
+                # Sample random timesteps
+                t = torch.randint(0, self.num_diffusion_steps, (bsz,), device=self._device)
 
-        finally:
-            if not _training_succeeded:
-                self.cleanup()
-            self.stop_threading()
+                # Forward diffusion: q(x_t | x_0) = N(sqrt(a_bar)*x_0, (1-a_bar)*I)
+                noise = torch.randn_like(x0_batch)
+                sqrt_ab = self._schedule["sqrt_alpha_bar"][t].unsqueeze(-1)
+                sqrt_omab = self._schedule["sqrt_one_minus_alpha_bar"][t].unsqueeze(-1)
+                x_t = sqrt_ab * x0_batch + sqrt_omab * noise
 
+                # Predict noise
+                eps_pred = self._model(x_t, t)
+
+                # MSE loss
+                loss = nn.functional.mse_loss(eps_pred, noise)
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self._model.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                epoch_loss += loss.item()
+                n_batches += 1
+
+            avg_loss = epoch_loss / max(n_batches, 1)
+            self.current_training_loss = avg_loss
+
+            if epoch % max(1, self._epochs // 20) == 0 or epoch == 1:
+                logger.info("TabDiff epoch %d/%d  loss=%.6f", epoch, self._epochs, avg_loss)
+
+            # Early stopping
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                epochs_no_improve = 0
+                # Save best model weights
+                self._best_state = {k: v.cpu().clone() for k, v in self._model.state_dict().items()}
+            else:
+                epochs_no_improve += 1
+
+            if epoch >= self._min_epochs and epochs_no_improve >= self._patience:
+                logger.info(
+                    "TabDiff early stopping at epoch %d (patience=%d, best_loss=%.6f)",
+                    epoch, self._patience, best_loss,
+                )
+                break
+
+        # Restore best weights
+        if hasattr(self, "_best_state") and self._best_state:
+            self._model.load_state_dict(self._best_state)
+            del self._best_state
+
+        self._model.eval()
+        self._trained = True
+        self.stop_threading()
+
+    # Required by BaseSynthesizer but we override train() directly
     def _train(self, train_data):
-        pass  # not used — train() overrides entirely
+        pass
 
     # ------------------------------------------------------------------
-    # Generation
+    # Sampling (reverse diffusion)
     # ------------------------------------------------------------------
 
-    def _generate(self, n_samples: int, condition=None) -> pd.DataFrame:
-        if not self.trained:
+    @torch.no_grad()
+    def _reverse_diffusion(self, n_samples: int) -> np.ndarray:
+        """DDPM ancestral sampling: x_T ~ N(0, I) -> x_0."""
+        self._model.eval()
+        x = torch.randn(n_samples, self._x_dim, device=self._device)
+
+        for t_idx in reversed(range(self.num_diffusion_steps)):
+            t = torch.full((n_samples,), t_idx, device=self._device, dtype=torch.long)
+            eps_pred = self._model(x, t)
+
+            beta_t = self._schedule["betas"][t_idx]
+            sqrt_recip_alpha = self._schedule["sqrt_recip_alpha"][t_idx]
+            sqrt_omab = self._schedule["sqrt_one_minus_alpha_bar"][t_idx]
+
+            # Mean of p(x_{t-1} | x_t)
+            x = sqrt_recip_alpha * (x - (beta_t / sqrt_omab) * eps_pred)
+
+            # Add noise for t > 0
+            if t_idx > 0:
+                sigma = torch.sqrt(self._schedule["posterior_variance"][t_idx])
+                x = x + sigma * torch.randn_like(x)
+
+        return x.cpu().numpy()
+
+    # ------------------------------------------------------------------
+    # Decoding: continuous tensor -> DataFrame
+    # ------------------------------------------------------------------
+
+    def _decode_tensor(self, x: np.ndarray) -> pd.DataFrame:
+        """Convert denoised continuous tensor back to a DataFrame."""
+        df = pd.DataFrame(index=np.arange(x.shape[0]))
+        offset = 0
+
+        # Numerical columns: undo z-score
+        for i, col in enumerate(self.numeric_cols):
+            vals = x[:, offset + i] * self._num_stds[i] + self._num_means[i]
+            df[col] = vals
+        offset += self._num_dim
+
+        # Categorical columns: argmax over one-hot slices
+        for col in self.categorical_cols:
+            cats = self._cat_categories[col]
+            k = len(cats)
+            logits = x[:, offset:offset + k]
+            indices = np.argmax(logits, axis=1)
+            df[col] = [cats[idx] for idx in indices]
+            offset += k
+
+        # Reorder columns to match original
+        if self._column_order:
+            df = df[self._column_order]
+        elif self.stored_data is not None:
+            df = df[list(self.stored_data.columns)]
+
+        # Cast dtypes back
+        for col in df.columns:
+            df[col] = self._cast_column_dtype(col, df[col])
+
+        return df
+
+    # ------------------------------------------------------------------
+    # Generation interface
+    # ------------------------------------------------------------------
+
+    def _generate(self, n_samples: int, condition: Optional[Dict[str, object]] = None) -> pd.DataFrame:
+        if not self._trained or self._model is None:
             raise RuntimeError("Model must be trained before generating samples")
 
-        # Fast path: bootstrap from stored data
-        if self._bootstrap_sampling:
-            if self.stored_data is None or len(self.stored_data) == 0:
-                raise RuntimeError("No stored data for bootstrap sampling")
-            rs = self.random_state if self.random_state is not None else 42
-            synthetic_df = self.stored_data.sample(
-                n=n_samples, replace=True, random_state=rs
-            ).reset_index(drop=True)
-            if condition and isinstance(condition, dict):
-                for col, val in condition.items():
-                    if col in synthetic_df.columns:
-                        synthetic_df[col] = val
-            return synthetic_df
+        raw = self._reverse_diffusion(n_samples)
+        df = self._decode_tensor(raw)
 
-        self._check_repo_available()
-        repo_abs = os.path.abspath(self._get_repo_dir())
+        if condition:
+            df = self._apply_conditions(df, condition)
 
-        # Find the best checkpoint from training
-        ckpt_dir = os.path.join(repo_abs, "tabdiff", "ckpt", self.dataset_name, "learnable_schedule")
-        if not os.path.isdir(ckpt_dir):
-            ckpt_dir = os.path.join(repo_abs, "ckpt", self.dataset_name, "learnable_schedule")
-        ckpt_candidates = sorted(
-            glob.glob(os.path.join(ckpt_dir, "best_ema_model_*.pt")),
-            key=os.path.getmtime, reverse=True,
-        )
-        if not ckpt_candidates:
-            ckpt_candidates = sorted(
-                glob.glob(os.path.join(ckpt_dir, "best_model_*.pt")),
-                key=os.path.getmtime, reverse=True,
+        return df
+
+    # ------------------------------------------------------------------
+    # Helpers shared with old API
+    # ------------------------------------------------------------------
+
+    def _cast_column_dtype(self, col: str, values: pd.Series) -> pd.Series:
+        if self.original_dtypes is None:
+            return values
+        dtype = self.original_dtypes[col]
+        if pd.api.types.is_bool_dtype(dtype):
+            if pd.api.types.is_numeric_dtype(values):
+                return (values > 0.5).astype(bool)
+            return values.astype(bool)
+        if pd.api.types.is_integer_dtype(dtype):
+            rounded = np.round(pd.to_numeric(values, errors="coerce")).fillna(0)
+            return rounded.astype(dtype)
+        if pd.api.types.is_float_dtype(dtype):
+            return pd.to_numeric(values, errors="coerce").astype(dtype)
+        if isinstance(dtype, pd.CategoricalDtype):
+            return pd.Series(
+                pd.Categorical(values, categories=dtype.categories),
+                index=values.index, name=values.name,
             )
-        if not ckpt_candidates:
-            raise RuntimeError(
-                f"No checkpoint found in {ckpt_dir}. "
-                f"Training may not have run long enough to save a checkpoint."
-            )
+        return values
 
-        # Run sampling subprocess
-        cmd = [
-            sys.executable,
-            os.path.join(repo_abs, "main.py"),
-            "--dataname", self.dataset_name,
-            "--mode", "test",
-            "--no_wandb",
-            "--ckpt_path", ckpt_candidates[0],
-            "--num_samples_to_generate", str(n_samples),
-        ]
-        if self._task_config_path:
-            cmd.extend(["--config_path", self._task_config_path])
-        self._run_subprocess(cmd, "sample")
-
-        # Find output CSV — glob for samples*.csv under result/.
-        # TabDiff main.py uses curr_dir = tabdiff/, so outputs land in
-        # tabdiff/result/{dataset}/. Fall back to legacy result/{dataset}/
-        # for older TabDiff layouts.
-        result_dir = os.path.join(repo_abs, "tabdiff", "result", self.dataset_name)
-        if not os.path.isdir(result_dir):
-            result_dir = os.path.join(repo_abs, "result", self.dataset_name)
-        csv_candidates = sorted(
-            glob.glob(os.path.join(result_dir, "**", "*.csv"), recursive=True),
-            key=os.path.getmtime,
-            reverse=True,
-        )
-
-        if not csv_candidates:
-            raise RuntimeError(
-                f"No output CSV found under {result_dir} after sampling. "
-                f"Check TabDiff subprocess logs."
-            )
-
-        synthetic_df = pd.read_csv(csv_candidates[0])
-        logger.info("[TabDiff][sample] Read %d rows from %s", len(synthetic_df), csv_candidates[0])
-
-        # Restore original column names
-        if self.stored_data is not None and synthetic_df.shape[1] == len(self.stored_data.columns):
-            synthetic_df.columns = self.stored_data.columns
-
-        # Trim/pad to requested size
-        if len(synthetic_df) > n_samples:
-            synthetic_df = synthetic_df.head(n_samples)
-        elif len(synthetic_df) < n_samples:
-            repeats = (n_samples + len(synthetic_df) - 1) // len(synthetic_df)
-            synthetic_df = pd.concat([synthetic_df] * repeats, ignore_index=True)
-            synthetic_df = synthetic_df.head(n_samples)
-
-        # Apply conditions
-        if condition and isinstance(condition, dict):
-            for col, val in condition.items():
-                if col in synthetic_df.columns:
-                    synthetic_df[col] = val
-
-        return synthetic_df
+    def _apply_conditions(self, df: pd.DataFrame, condition: Optional[Dict[str, object]]) -> pd.DataFrame:
+        if not condition:
+            return df
+        for col, value in condition.items():
+            if col in df.columns:
+                df[col] = value
+        return df
 
     def _encode_for_tensor(self, df: pd.DataFrame) -> pd.DataFrame:
-        encoded_df = df.copy()
-        for col in encoded_df.columns:
-            if not pd.api.types.is_numeric_dtype(encoded_df[col]):
-                encoded_df[col] = pd.Categorical(encoded_df[col]).codes
-        return encoded_df
+        encoded = df.copy()
+        for col in encoded.columns:
+            if not pd.api.types.is_numeric_dtype(encoded[col]):
+                encoded[col] = pd.Categorical(encoded[col]).codes
+        return encoded
+
+    # ------------------------------------------------------------------
+    # Public convenience methods (preserve old API surface)
+    # ------------------------------------------------------------------
 
     def sample(self, n=None, return_dataframe=False):
         if n is None:
             n = len(self.stored_data) if self.stored_data is not None else 100
-
         synthetic_df = self._generate(int(n))
         if return_dataframe:
             return synthetic_df
-
-        encoded_df = self._encode_for_tensor(synthetic_df)
-        return torch.tensor(
-            encoded_df.to_numpy(dtype=float, copy=False), dtype=torch.float32
-        )
+        encoded = self._encode_for_tensor(synthetic_df)
+        return torch.tensor(encoded.to_numpy(dtype=float, copy=False), dtype=torch.float32)
 
     def generate(self, n_samples, condition=None):
         synthetic_df = self._generate(int(n_samples), condition=condition)
-        synthetic_encoded_df = self._encode_for_tensor(synthetic_df)
+        synthetic_encoded = self._encode_for_tensor(synthetic_df)
         self._last_generated_df = synthetic_df
-        self._last_generated_encoded_df = synthetic_encoded_df
+        self._last_generated_encoded_df = synthetic_encoded
         return torch.tensor(
-            synthetic_encoded_df.to_numpy(dtype=float, copy=False),
-            dtype=torch.float32,
+            synthetic_encoded.to_numpy(dtype=float, copy=False), dtype=torch.float32,
         )
 
     def decode_samples(self, tensor_samples):
@@ -654,14 +506,11 @@ class TabDiffSynthesizer(BaseSynthesizer):
             and self._last_generated_df.shape[0] == tensor_samples.shape[0]
         ):
             return self._last_generated_df
-
         if self.stored_data is not None:
+            return pd.DataFrame(tensor_samples.numpy(), columns=self.stored_data.columns)
+        if self._column_order:
             return pd.DataFrame(tensor_samples.numpy(), columns=self._column_order)
         return pd.DataFrame(tensor_samples.numpy())
-
-    # ------------------------------------------------------------------
-    # Editing / Finetuning
-    # ------------------------------------------------------------------
 
     def edit(self, x_row_df, intervention: dict, meta=None, n_samples=1):
         condition: Dict[str, object] = {}
@@ -671,10 +520,8 @@ class TabDiffSynthesizer(BaseSynthesizer):
                 value = row[col]
                 if pd.notna(value):
                     condition[col] = value
-
         if intervention:
             condition.update(intervention)
-
         return self._generate(n_samples=int(n_samples), condition=condition)
 
     def finetune(self, df_adapt, meta=None):
@@ -685,108 +532,54 @@ class TabDiffSynthesizer(BaseSynthesizer):
         return self
 
     # ------------------------------------------------------------------
-    # Checkpointing
+    # Checkpoint support
     # ------------------------------------------------------------------
 
     def get_state(self):
-        return {
-            "dataset_name": self.dataset_name,
-            "stored_data": self.stored_data,
-            "original_dtypes": self.original_dtypes,
+        state = {
+            "model_state": self._model.state_dict() if self._model else None,
+            "x_dim": self._x_dim,
+            "num_dim": self._num_dim,
+            "cat_dim": self._cat_dim,
             "numeric_cols": self.numeric_cols,
             "categorical_cols": self.categorical_cols,
+            "cat_categories": self._cat_categories,
+            "num_means": self._num_means,
+            "num_stds": self._num_stds,
+            "original_dtypes": self.original_dtypes,
             "column_order": self._column_order,
-            "target_column": self.target_column,
-            "epochs": self._epochs,
             "num_diffusion_steps": self.num_diffusion_steps,
             "hidden_dims": self.hidden_dims,
             "time_emb_dim": self.time_emb_dim,
-            "_bootstrap_sampling": self._bootstrap_sampling,
         }
+        return state
 
     def load_state(self, checkpoint):
-        state = (
-            torch.load(checkpoint, weights_only=False)
-            if isinstance(checkpoint, str)
-            else checkpoint
-        )
-        self.dataset_name = state["dataset_name"]
-        self.stored_data = state["stored_data"]
-        self.original_dtypes = state["original_dtypes"]
+        state = torch.load(checkpoint, weights_only=False) if isinstance(checkpoint, str) else checkpoint
+        self.num_diffusion_steps = state.get("num_diffusion_steps", self.num_diffusion_steps)
+        self.hidden_dims = tuple(state.get("hidden_dims", self.hidden_dims))
+        self.time_emb_dim = state.get("time_emb_dim", self.time_emb_dim)
+        self._x_dim = state["x_dim"]
+        self._num_dim = state["num_dim"]
+        self._cat_dim = state["cat_dim"]
         self.numeric_cols = state["numeric_cols"]
         self.categorical_cols = state["categorical_cols"]
-        self._column_order = state.get("column_order")
-        self.target_column = state.get("target_column")
-        self._bootstrap_sampling = state.get("_bootstrap_sampling", False)
+        self._cat_categories = state["cat_categories"]
+        self._num_means = state["num_means"]
+        self._num_stds = state["num_stds"]
+        self.original_dtypes = state["original_dtypes"]
+        self._column_order = state.get("column_order", [])
+        self.stored_data = pd.DataFrame(columns=self._column_order) if self._column_order else None
+        self._model = MLPDenoiser(self._x_dim, self.hidden_dims, self.time_emb_dim)
+        self._model.load_state_dict(state["model_state"])
+        self._model.eval()
 
-        if self._bootstrap_sampling:
-            self.trained = True
-            self.model_loaded = True
-        elif self.stored_data is not None:
-            # Re-prepare data files so sampling subprocess can find them
-            try:
-                self._check_repo_available()
-                self._prepare_data(self.stored_data)
-                self.trained = True
-                self.model_loaded = True
-            except RuntimeError:
-                logger.warning("Cannot restore full TabDiff state without repo")
+        betas = _linear_beta_schedule(self.num_diffusion_steps)
+        self._schedule = _precompute_schedule(betas)
+        self.set_device()
+        self._model.to(self._device)
+        for k, v in self._schedule.items():
+            self._schedule[k] = v.to(self._device)
 
-    # ------------------------------------------------------------------
-    # Cleanup lifecycle
-    # ------------------------------------------------------------------
-
-    def cleanup(self):
-        """Remove all temporary files created during training. Idempotent."""
-        if self._cleaned_up:
-            return
-
-        for d in self._cleanup_dirs:
-            if os.path.isdir(d):
-                shutil.rmtree(d, ignore_errors=True)
-
-        for f in self._cleanup_files:
-            try:
-                if os.path.isfile(f):
-                    os.remove(f)
-            except OSError:
-                pass
-
-        # Remove empty parent directories (never above TabDiff source root)
-        tabdiff_root = os.path.abspath(os.path.dirname(__file__))
-        _candidates = set()
-        for d in self._cleanup_dirs:
-            parent = os.path.dirname(d)
-            if parent:
-                _candidates.add(parent)
-        for f in self._cleanup_files:
-            parent = os.path.dirname(f)
-            if parent:
-                _candidates.add(parent)
-        for start in sorted(_candidates, key=lambda p: p.count(os.sep), reverse=True):
-            cur = start
-            while cur and cur != tabdiff_root:
-                try:
-                    if os.path.isdir(cur) and not os.listdir(cur):
-                        os.rmdir(cur)
-                    else:
-                        break
-                except OSError:
-                    break
-                cur = os.path.dirname(cur)
-
-        self._cleaned_up = True
-        self.trained = False
-
-    def __del__(self):
-        try:
-            self.cleanup()
-        except Exception:
-            pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.cleanup()
-        return False
+        self._trained = True
+        self.model_loaded = True
