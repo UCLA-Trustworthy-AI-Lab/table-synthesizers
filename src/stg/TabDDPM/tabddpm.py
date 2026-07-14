@@ -109,9 +109,18 @@ class TabDDPM(BaseSynthesizer):
     
     # Process numerical columns with Gaussian Quantile Transform (better for TabDDPM)
     for col in numerical_cols:
+        # QuantileTransformer passes NaN straight through unchanged, which
+        # then poisons the whole training loss (GLoss becomes NaN from the
+        # first NaN-containing batch onward) and causes FoundNANsError at
+        # sampling time. Median-impute before transforming, matching
+        # sklearn's own SimpleImputer default strategy for numerical data.
+        col_values = df[[col]]
+        if col_values[col].isna().any():
+            col_values = col_values.fillna(col_values[col].median())
+
         # Use QuantileTransformer with normal output distribution (better for diffusion models)
         scaler = QuantileTransformer(output_distribution='normal', random_state=self.seed)
-        scaled_data = scaler.fit_transform(df[[col]])
+        scaled_data = scaler.fit_transform(col_values)
         encoded_df[f'{col}_gqt'] = scaled_data.flatten()
         
         self.encoders[col] = {'type': 'quantile', 'encoder': scaler}
@@ -135,9 +144,17 @@ class TabDDPM(BaseSynthesizer):
         encoded_df[f'{col}_le'] = encoded_data.astype(float)
         
         self.encoders[col] = {'type': 'label', 'encoder': encoder}
-        
-        # Calculate empirical distribution
-        empirical_dist = df[col].value_counts(normalize=True).values.tolist()
+
+        # Calculate empirical distribution. LabelEncoder assigns NaN/None its
+        # own class (encoder.classes_ includes it), but value_counts() drops
+        # NaN by default -- using that directly undercounts num_classes by
+        # one and misaligns per-index probabilities with the label indices,
+        # causing an out-of-range embedding lookup during training whenever
+        # the column actually contains missing values. Count with NaN
+        # included and re-index to encoder.classes_'s order explicitly, so
+        # length and per-index alignment both match the label encoding.
+        counts = df[col].value_counts(normalize=True, dropna=False)
+        empirical_dist = [float(counts.get(cls, 0.0)) for cls in encoder.classes_]
         
         data_info['transform_info'][col] = {
             'original_dtype': 'categorical',
@@ -220,6 +237,20 @@ class TabDDPM(BaseSynthesizer):
     # Setup column info if not already done (for DataFrame input)
     if not self.num_cols and not self.ord_cols:
         self._setup_column_info()
+
+    if self.data_info is not None:
+        columns = list(self.data_info['transform_info'])
+        # Mirrors scripts/train.py's own auto-detection: defaults to the
+        # last column when no explicit target was given.
+        effective_target = self.target if self.target is not None else (columns[-1] if columns else None)
+        feature_cols = [c for c in columns if c != effective_target]
+        if effective_target is not None and not feature_cols:
+            raise ValueError(
+                f"TabDDPM requires at least one non-target feature column to train on; "
+                f"got a dataset where '{effective_target}' is the only column. TabDDPM is a "
+                f"conditional synthesizer -- it generates feature columns conditioned on "
+                f"the target, so there is nothing for it to learn with zero feature columns."
+            )
 
     self.diffusion_fn, self.ema_model, self.empirical_class_dist = train(train_loader,
     self.data_info,

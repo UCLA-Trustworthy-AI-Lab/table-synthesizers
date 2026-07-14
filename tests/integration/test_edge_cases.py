@@ -86,7 +86,7 @@ SEEDED_MODELS = [
 ]
 
 # Models that require at least 2 columns (need target + features)
-MULTI_COLUMN_ONLY = {"DPCART", "TabPFGen"}
+MULTI_COLUMN_ONLY = {"DPCART", "TabPFGen", "TabDDPM"}
 
 # Models that cannot handle NaN values natively
 # NFlow: synthcity's NFlow uses BayesianGaussianMixture for encoding which rejects NaN
