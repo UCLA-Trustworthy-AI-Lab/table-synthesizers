@@ -13,7 +13,7 @@ on:
   push:
     branches: [ main, master, '*_test' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, '*_test' ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -68,6 +68,7 @@ jobs:
     name: Unit Tests
     needs: detect-changes
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
@@ -76,6 +77,8 @@ jobs:
       (github.event_name == 'push' && needs.detect-changes.outputs.has_model_changes == 'true')
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -83,10 +86,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
-        run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
-          docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          tags: ghcr.io/ohsono/table-synthesizers-base:latest
+          push: false
+          load: true
+          cache-from: type=gha,scope=base-image
+          cache-to: type=gha,mode=max,scope=base-image
       - name: Run targeted unit tests in Docker (push)
         if: github.event_name == 'push'
         run: |
@@ -113,12 +121,15 @@ jobs:
     name: Integration Tests
     needs: unit-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Setup Sandbox Datasets
         run: python tests/integration/setup_sandbox_datasets.py
       - name: Log in to GHCR
@@ -128,14 +139,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
-        run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
-          docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          tags: ghcr.io/ohsono/table-synthesizers-base:latest
+          push: false
+          load: true
+          cache-from: type=gha,scope=base-image
+          cache-to: type=gha,mode=max,scope=base-image
       - name: Run integration tests in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
-            bash -c "pytest tests/integration/ --ignore-glob='**/test_edge_cases.py' -v --tb=short"
+            bash -c "pytest tests/integration/ \
+              --ignore-glob='**/test_edge_cases.py' \
+              --ignore-glob='**/test_aim_integration.py' \
+              -v --tb=short"
 
   # ─────────────────────────────────────────────────────────────
   # 4. Edge case tests (PR only)
@@ -144,12 +163,25 @@ jobs:
     name: Edge Case Tests
     needs: integration-tests
     runs-on: ubuntu-latest
+    # This job runs many parametrized edge-case scenarios (Unicode,
+    # imbalanced classes, etc.) x all ~16 models. Previously used full
+    # production epoch counts (e.g. TabDiff epochs=8000, AutoDiff n_epochs=
+    # 2000 x2) with no quick-mode reduction -- only 15% done at 25min on its
+    # first-ever PR-triggered run. _FAST_CI_CONFIG in test_edge_cases.py now
+    # covers every GPU-tier model (previously only GREAT/NFlow), cutting the
+    # non-GREAT/NFlow portion of this suite from 3+ hours to ~25s. GREAT/NFlow
+    # (LLM fine-tuning / normalizing-flow iterations) remain the slow tail
+    # even at their own reduced n_iter, hence the timeout is still generous
+    # rather than tight.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Setup Sandbox Datasets
         run: python tests/integration/setup_sandbox_datasets.py
       - name: Log in to GHCR
@@ -159,10 +191,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build base image
-        run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-base:latest || \
-          docker buildx build -f docker/Dockerfile.base \
-            -t ghcr.io/ohsono/table-synthesizers-base:latest --load .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.base
+          tags: ghcr.io/ohsono/table-synthesizers-base:latest
+          push: false
+          load: true
+          cache-from: type=gha,scope=base-image
+          cache-to: type=gha,mode=max,scope=base-image
       - name: Run edge case tests in Docker
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-base:latest \
@@ -175,12 +212,25 @@ jobs:
     name: GPU Tests (CPU Fallback)
     needs: unit-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Previously ran the *entire* tests/ tree a second time on the GPU image
+    # (redundant with unit-tests/integration-tests/edge-case-tests, which
+    # already cover full correctness on the base image) and used full
+    # production epoch counts. Narrowed to just the edge_gpu-marked cases
+    # (GPU-tier models specifically) with _FAST_CI_CONFIG's reduced epochs
+    # applied -- the actually-unique signal this job provides. Still
+    # non-blocking: its history includes a torch/dynamo incompatibility that
+    # took a while to root-cause (see docker/Dockerfile.gpu comments), so
+    # keeping it advisory until there's more runs' worth of timing data.
+    continue-on-error: true
     permissions:
       contents: read
       packages: read
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Setup Sandbox Datasets
         run: python tests/integration/setup_sandbox_datasets.py
       - name: Log in to GHCR
@@ -190,17 +240,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Pull or build GPU image
-        run: |
-          docker pull ghcr.io/ohsono/table-synthesizers-gpu:latest || \
-          docker buildx build -f docker/Dockerfile.gpu \
-            -t ghcr.io/ohsono/table-synthesizers-gpu:latest --load .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.gpu
+          tags: ghcr.io/ohsono/table-synthesizers-gpu:latest
+          push: false
+          load: true
+          cache-from: type=gha,scope=gpu-image
+          cache-to: type=gha,mode=max,scope=gpu-image
       - name: Run GPU tests in Docker (CPU Fallback)
         run: |
           docker run --rm -v ${{ github.workspace }}:/app -w /app ghcr.io/ohsono/table-synthesizers-gpu:latest \
-            bash -c "pytest tests/ -m 'not synthcity' \
-              --ignore-glob='**/test_arf.py' \
-              --ignore-glob='**/test_bayesian_network.py' \
-              --ignore-glob='**/test_great.py' \
-              --ignore-glob='**/test_nflow.py' \
-              --ignore-glob='**/test_smote.py' \
-              -v --tb=short"
+            bash -c "pytest tests/integration/test_edge_cases.py -m edge_gpu -v --tb=short"

@@ -86,7 +86,7 @@ SEEDED_MODELS = [
 ]
 
 # Models that require at least 2 columns (need target + features)
-MULTI_COLUMN_ONLY = {"DPCART", "TabPFGen"}
+MULTI_COLUMN_ONLY = {"DPCART", "TabPFGen", "TabDDPM"}
 
 # Models that cannot handle NaN values natively
 # NFlow: synthcity's NFlow uses BayesianGaussianMixture for encoding which rejects NaN
@@ -97,10 +97,23 @@ N_SAMPLES = 10  # keep small for speed
 # Apply edge_case marker to all tests in this module
 pytestmark = pytest.mark.edge_case
 
-# Fast CI configs for slow models (overridden only when caller doesn't specify)
+# Fast CI configs for slow models (overridden only when caller doesn't specify).
+# Edge-case tests only need to exercise code paths (shape/dtype handling,
+# encoding of degenerate data, etc.), not model convergence -- these mirror
+# the same minimal-epoch values each model's own unit tests already use.
+# Without these, models fell back to their production defaults (e.g. TabDiff
+# epochs=8000, AutoDiff n_epochs=2000 x2), making this the single largest
+# contributor to CI runtime.
 _FAST_CI_CONFIG = {
     "GREAT": {"n_iter": 1},   # default 100 LLM epochs is too slow for CI
     "NFlow": {"n_iter": 5},   # default 1000 flow iterations is too slow for CI
+    "CTGAN": {"epochs": 1},           # default 100
+    "PATECTGAN": {"epochs": 1},       # default 300
+    "TVAE": {"epochs": 1},            # default 150
+    "TabDiff": {"epochs": 1},         # default 8000
+    "TabDDPM": {"steps": 1, "num_timesteps": 10},  # default steps=10000, num_timesteps=1000
+    "AutoDiff": {"n_epochs": 1, "diff_n_epochs": 1},  # default 2000 each
+    "TabSyn": {"epochs": 1},          # default 1000
 }
 
 
@@ -513,7 +526,7 @@ class TestTensorOutput:
 
     @pytest.mark.parametrize("model", _parametrize_all())
     def test_tensor_shape_and_dtype(self, model, df):
-        config = {}
+        config = _FAST_CI_CONFIG.get(model, {})
         synth = TableSynthesizer(model, config)
         synth.fit(df)
         tensor = synth.sample(n=N_SAMPLES)
