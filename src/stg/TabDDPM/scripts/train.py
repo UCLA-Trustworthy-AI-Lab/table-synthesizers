@@ -85,6 +85,14 @@ def process_encoded_table(tensor, data_info, target):
         else:
             X_features = X_cat
         out_dict = y
+
+    if X_features is None:
+        # No feature columns remain once the target is removed (e.g. a
+        # dataset with only a single categorical column). The downstream
+        # MLPDiffusion is built with d_in=0 and its nn.Linear(0, dim_t)
+        # projection handles a zero-width input correctly -- it just must
+        # not be None.
+        X_features = tensor.new_empty(tensor.shape[0], 0)
     #print("X_features.shape",X_features.shape)
     return X_features, out_dict
 
