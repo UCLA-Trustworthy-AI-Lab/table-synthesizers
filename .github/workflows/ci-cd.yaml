@@ -149,7 +149,12 @@ jobs:
     name: Edge Case Tests
     needs: integration-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # This job runs many parametrized edge-case scenarios (Unicode,
+    # imbalanced classes, etc.) x all ~16 models with full real training and
+    # no quick-mode epoch reduction. Observed: only 15% done at 25min on its
+    # first-ever PR-triggered run, so budget generously rather than
+    # timeout-fail on legitimate (if slow) work.
+    timeout-minutes: 180
     permissions:
       contents: read
       packages: read
