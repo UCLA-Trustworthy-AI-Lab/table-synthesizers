@@ -24,8 +24,20 @@ FROM nvidia/cuda:${CUDA_VERSION}.1-base-ubuntu22.04 AS builder
 
 WORKDIR /app
 
+# Non-interactive apt: deadsnakes (below) pulls in a tzdata reconfigure that
+# otherwise prompts for a timezone and hangs forever in a non-tty build.
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Build-time deps: Python + compiler tools (NOT carried into runtime)
+# Ubuntu 22.04's own python3.11 package (universe repo) is frozen at a
+# pre-release build (3.11.0~rc1, from before the 3.11.0 final release) and is
+# missing stdlib additions torch's dynamo polyfills depend on (e.g.
+# sys.get_int_max_str_digits). Use the deadsnakes PPA, which ships actively
+# updated point releases, instead.
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.11 python3.11-venv python3.11-dev python3-pip \
     git build-essential && \
@@ -83,7 +95,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # 5. Install package in editable mode
 COPY src/ src/
-COPY setup.cfg pyproject.toml ./
+COPY pyproject.toml ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install -e .
@@ -103,8 +115,14 @@ FROM nvidia/cuda:${CUDA_VERSION}.1-base-ubuntu22.04 AS runtime
 
 WORKDIR /app
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Runtime system deps: Python + libgomp (OpenMP for scikit-learn / torch)
+# See builder stage comment above re: deadsnakes vs Ubuntu's frozen python3.11.
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.11 python3.11-venv \
     libgomp1 git \
@@ -123,7 +141,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
     VIRTUAL_ENV="/opt/venv"
 
 COPY --from=builder /app/src          src/
-COPY --from=builder /app/setup.cfg    ./
 COPY --from=builder /app/pyproject.toml ./
 
 COPY config/ config/

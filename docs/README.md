@@ -9,61 +9,21 @@ Complete documentation for the table-synthesizers project. For a quick overview,
 | [Root README](../README.md) | Project overview, installation, and quick start |
 | [CLAUDE.md (root)](../CLAUDE.md) | Development guide and project constraints |
 | [Development Guide](CLAUDE.md) | Detailed architecture, API reference, and contributing guide |
-
-## GPU & Hardware
-
-| Document | Description |
-|----------|-------------|
-| [GPU Acceleration Guide](GPU_ACCELERATION_GUIDE.md) | Comprehensive GPU setup, supported architectures, optimization |
-| [GPU Quick Start](QUICK_START_GPU.md) | Fast GPU setup for common hardware |
-| [GPU Compatibility Guide](GPU_COMPATIBILITY_GUIDE.md) | GPU compatibility matrix across platforms |
-| [Blackwell GPU Solution](BLACKWELL_GPU_FINAL_SOLUTION.md) | NVIDIA Blackwell (GB10/B100/B200) specific setup |
-| [Model GPU Configs](MODEL_GPU_CONFIGS.md) | Per-model GPU configurations and memory requirements |
-| [CPU Cores Guide](CPU_CORES_GUIDE.md) | CPU optimization and multi-core usage |
-
-## Configuration & Training
-
-| Document | Description |
-|----------|-------------|
 | [Config System](../config/README.md) | JSON configuration files and customization |
-| [Config Externalization Summary](CONFIG_EXTERNALIZATION_SUMMARY.md) | How the config system was designed |
-| [Enhanced Training Guide](ENHANCED_TRAINING_GUIDE.md) | Training best practices and advanced options |
-| [Iterative Training Guide](ITERATIVE_TRAINING_GUIDE.md) | Multi-dataset iterative training workflows |
-| [Iterative Training Summary](ITERATIVE_TRAINING_SUMMARY.md) | Summary of iterative training features |
-| [Batch Size Optimization](BATCH_SIZE_OPTIMIZATION_SUMMARY.md) | GPU-aware batch size tuning |
-| [Hyperparameter Analysis](HYPERPARAMETER_ANALYSIS.md) | Hyperparameter tuning guide |
-
-## Monitoring & Integration
-
-| Document | Description |
-|----------|-------------|
-| [WandB Integration Guide](WANDB_INTEGRATION_GUIDE.md) | Setting up Weights & Biases tracking |
-| [WandB Integration Summary](WANDB_INTEGRATION_SUMMARY.md) | Summary of WandB features |
 
 ## Model Comparisons & References
 
 | Document | Description |
 |----------|-------------|
-| [CTGAN vs PATECTGAN](CTGAN_vs_PATECTGAN_Comparison.md) | Comparison of GAN-based synthesizers |
-| [Compatibility Guide](COMPATIBILITY_GUIDE.md) | Platform and Python version compatibility |
-| [Platform Compatibility Fixes](PLATFORM_COMPATIBILITY_FIX_SUMMARY.md) | Fixes for cross-platform issues |
+| [Algorithm Comparison Summary](ALGORITHM_COMPARISON_SUMMARY.txt) | CTGAN vs PATE-CTGAN quick comparison |
+| [Hyperparameter Comparison Summary](HYPERPARAMETER_COMPARISON_SUMMARY.txt) | Hyperparameter tuning reference across models |
 
-## Proof of Concept & Results
-
-| Document | Description |
-|----------|-------------|
-| [POC Summary](POC_SUMMARY.md) | Proof of concept overview |
-| [POC Results](POC_RESULTS.md) | Detailed POC testing results |
-| [TabSyn POC Guide](TABSYN_POC_GUIDE.md) | TabSyn-specific proof of concept |
-| [Test Validation Report](TEST_VALIDATION_REPORT.md) | Test validation results |
-
-## Operational
+## API Reference (mkdocs site)
 
 | Document | Description |
 |----------|-------------|
-| [TLS Fix Guide](TLS_FIX_GUIDE.md) | TLS/SSL certificate troubleshooting |
-| [Changes Summary](CHANGES_SUMMARY.md) | Changelog of recent updates |
-| [Implementation Plan](implementation_plan.md) | Project roadmap and planning |
+| [BaseSynthesizer](api/base.md) | Abstract base class all synthesizers implement |
+| [TableSynthesizer](api/table_synthesizer.md) | Factory/unified interface for all registered models |
 
 ## Quick Reference
 

@@ -1,0 +1,26 @@
+--- a/.venv/lib/python3.12/site-packages/synthcity/plugins/generic/plugin_bayesian_network.py
++++ b/.venv/lib/python3.12/site-packages/synthcity/plugins/generic/plugin_bayesian_network.py
+@@ -11,7 +11,7 @@
+ import numpy as np
+ import pandas as pd
+ import pgmpy.estimators as estimators
+-from pgmpy.models import BayesianNetwork
++from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
+ from pgmpy.sampling import BayesianModelSampling
+
+ # synthcity absolute
+@@ -133,10 +133,10 @@
+
+     def _get_structure_scorer(self) -> Any:
+         return {
+-            "k2": estimators.K2Score,
+-            "bdeu": estimators.BDeuScore,
+-            "bic": estimators.BicScore,
+-            "bds": estimators.BDsScore,
++            "k2": estimators.K2,
++            "bdeu": estimators.BDeu,
++            "bic": estimators.BIC,
++            "bds": estimators.BDs,
+         }[self.struct_learning_score]
+
+     def _get_dag(self, X: pd.DataFrame) -> Any:

@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # 4. Copy source and install package
 COPY src/ src/
-COPY setup.cfg pyproject.toml ./
+COPY pyproject.toml ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system -e .
@@ -86,7 +86,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application source (src only — tests copied separately below)
 COPY --from=builder /app/src src/
-COPY --from=builder /app/setup.cfg /app/pyproject.toml ./
+COPY --from=builder /app/pyproject.toml ./
 
 # Copy config (needed by models at runtime)
 COPY config/ config/

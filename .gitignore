@@ -59,18 +59,16 @@ data/
 # example
 example/
 
-# Patch
-patches/
-
 # AGENTS.md
 AGENTS.md
 
 # text files
 *.md
 !README.md
-!docs/*.md
+!CLAUDE.md
 !config/README.md
 *.txt
+!requirements*.txt
 
 # image
 *.png
@@ -305,10 +303,8 @@ check_and_fix_pytorch.sh
 docker/.dockerignore
 docker/docker-compose.yml
 
-# Extra docs (keep only docs/*.md whitelisted above)
-docs/*.md
-!docs/CLAUDE.md
-!docs/README.md
+# docs/ is fully tracked (overrides the *.md/*.txt blanket rules above)
+!docs/**
 
 # Extra config presets
 !config/default_*.json

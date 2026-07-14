@@ -1,0 +1,278 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║          HYPERPARAMETER COMPARISON: CTGAN vs PATE-CTGAN                    ║
+║                   Why GPU Optimization Fails for CTGAN                     ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          THE PAC MISMATCH BUG                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🐛 PROBLEM FOUND: train_all_compatible_models.py:372-377
+
+  Code says:
+    if model_name == 'CTGAN':
+        pac_size = 10  # ← HARDCODED WRONG VALUE
+        optimal_batch_size = (optimal_batch_size // pac_size) * pac_size
+
+  But CTGAN actually uses:
+    src/stg/CTGAN/ctgan.py:42
+    def __init__(self, ..., pac=5, ...)  # ← DEFAULT IS 5, NOT 10!
+
+  And config files don't specify PAC at all:
+    config/default_CTGAN.json - NO 'pac' field ❌
+    config/default_PATE-CTGAN.json - NO 'pac' field ❌
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     HYPERPARAMETER COMPARISON TABLE                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════╦═══════════════════╦═══════════════════╦═══════════╗
+║   Parameter           ║      CTGAN        ║    PATE-CTGAN     ║  Winner   ║
+╠═══════════════════════╬═══════════════════╬═══════════════════╬═══════════╣
+║ batch_size (config)   ║       200         ║       100         ║  CTGAN    ║
+║ epochs                ║        50         ║        50         ║    Tie    ║
+║ embedding_dim         ║       128         ║       128         ║    Tie    ║
+║ generator_dim         ║   [256, 256]      ║   [256, 256]      ║    Tie    ║
+║ discriminator_dim     ║   [256, 256]      ║   [256, 256]      ║    Tie    ║
+║ generator_lr          ║     0.0002        ║     0.0002        ║    Tie    ║
+║ discriminator_lr      ║     0.0002        ║     0.0002        ║    Tie    ║
+╠═══════════════════════╬═══════════════════╬═══════════════════╬═══════════╣
+║ pac (code default)    ║   5 (implicit)    ║   1 (implicit)    ║ PATE-CTGAN║
+║ loss function         ║   Wasserstein     ║  Cross Entropy    ║  CTGAN    ║
+║ discriminator_steps   ║         1         ║         1         ║    Tie    ║
+║ teacher_iters         ║       N/A         ║         5         ║    N/A    ║
+║ student_iters         ║       N/A         ║         5         ║    N/A    ║
+╠═══════════════════════╬═══════════════════╬═══════════════════╬═══════════╣
+║ num_teachers          ║       N/A         ║        10         ║    N/A    ║
+║ epsilon (privacy)     ║       N/A         ║       1.0         ║    N/A    ║
+║ delta (privacy)       ║       N/A         ║      1e-5         ║    N/A    ║
+╚═══════════════════════╩═══════════════════╩═══════════════════╩═══════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      WHAT IS PAC (PACKING)?                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PAC = Packing multiple samples together before feeding to discriminator
+
+  Without PAC:
+    Input: [batch_size, features]
+    Example: [200, 50] → 200 samples, 50 features each
+
+  With PAC=5 (CTGAN default):
+    Input: [batch_size/5, features*5]
+    Example: [200, 50] → [40, 250] (5 samples packed together)
+
+  With PAC=10 (train script assumes):
+    Input: [batch_size/10, features*10]
+    Example: [200, 50] → [20, 500] (10 samples packed together)
+
+  CRITICAL CONSTRAINT: batch_size MUST be divisible by PAC
+    ✅ batch_size=200, PAC=5 → 200 % 5 = 0 (OK)
+    ✅ batch_size=200, PAC=10 → 200 % 10 = 0 (OK)
+    ❌ batch_size=203, PAC=5 → 203 % 5 = 3 (ERROR!)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    GPU OPTIMIZATION FLOW (BEAN DATASET)                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Dataset: Bean (1338 samples)
+GPU: NVIDIA GB10 (119.7 GB)
+
+CTGAN Optimization Flow:
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. Load config: batch_size = 200                                       │
+│                                                                         │
+│ 2. GPU optimization:                                                    │
+│    Available memory: 119.7 GB * 0.8 = 95.76 GB                         │
+│    Recommended: min(512, 98058, 1338//2)                               │
+│                = min(512, 98058, 669)                                   │
+│                = 512 (high-end GPU tier)                                │
+│                                                                         │
+│ 3. Apply PAC constraint (WRONG):                                        │
+│    pac_size = 10  # ← Script assumes this                              │
+│    optimal = (512 // 10) * 10 = 510                                    │
+│                                                                         │
+│ 4. Pass to CTGAN: batch_size = 510                                     │
+│                                                                         │
+│ 5. CTGAN uses PAC=5 (from code default)                                │
+│    Check: 510 % 5 = 0 ✅ (works by luck)                               │
+│                                                                         │
+│ 6. Issue: Could have used batch_size = 515                             │
+│            (515 % 5 = 0, but 515 % 10 = 5)                             │
+└─────────────────────────────────────────────────────────────────────────┘
+
+PATE-CTGAN Optimization Flow:
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. Load config: batch_size = 100                                       │
+│                                                                         │
+│ 2. GPU optimization:                                                    │
+│    Recommended: min(512, 98058, 669) = 512                             │
+│                                                                         │
+│ 3. NO PAC constraint applied (only for CTGAN)                          │
+│    optimal = 512                                                        │
+│                                                                         │
+│ 4. Pass to PATE-CTGAN: batch_size = 512                                │
+│                                                                         │
+│ 5. PATE-CTGAN uses PAC=1 (from code default)                           │
+│    Check: 512 % 1 = 0 ✅ (always works)                                │
+│                                                                         │
+│ 6. Result: Uses optimal batch size ✅                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      WHY THIS IS A PROBLEM                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. CTGAN loses 5-10 samples per batch due to overly conservative constraint
+   Example: Could use 515, forced to use 510 (~1% loss)
+
+2. For other datasets, loss could be worse:
+   Example: batch_size=307 → (307//10)*10 = 300 (PAC=10 constraint)
+                           vs (307//5)*5 = 305 (PAC=5 constraint)
+   Loss: 5 samples (~1.6%)
+
+3. GPU memory not fully utilized
+
+4. Slower convergence (fewer samples per batch)
+
+5. Inconsistency between optimization code and model code
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     WHY PATE-CTGAN DOESN'T HAVE THIS ISSUE                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+✅ Advantage 1: PAC=1 (no meaningful constraint)
+   Any batch size divisible by 1 (all integers)
+
+✅ Advantage 2: Train script doesn't apply PAC constraint to PATE-CTGAN
+   Only CTGAN gets the special PAC handling
+
+✅ Advantage 3: Uses full optimized batch size
+   batch_size=512 for Bean dataset (vs 510 for CTGAN)
+
+❌ Disadvantage: Smaller config default (100 vs 200)
+   But optimization brings it up to 512 anyway
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    OTHER KEY HYPERPARAMETER DIFFERENCES                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Loss Function
+   ├─ CTGAN: Wasserstein distance (more stable gradients)
+   └─ PATE-CTGAN: Binary Cross Entropy (standard GAN)
+
+2. Batch Size (Config)
+   ├─ CTGAN: 200 (larger for faster convergence)
+   └─ PATE-CTGAN: 100 (smaller due to 11 discriminators in memory)
+
+3. PAC Value
+   ├─ CTGAN: 5 (medium packing)
+   └─ PATE-CTGAN: 1 (no packing)
+
+4. Architecture Config
+   ├─ CTGAN: Explicit in config ([256, 256])
+   └─ PATE-CTGAN: Code defaults (same values)
+
+5. Training Iterations
+   ├─ CTGAN: 1 discriminator × 1 step = 1 update
+   └─ PATE-CTGAN: 10 teachers × 5 iters + 1 student × 5 iters = 55 updates
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           PERFORMANCE IMPACT                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+For Bean Dataset (1338 samples, NVIDIA GB10):
+
+╔═══════════════════╦════════════════╦══════════════╦═══════════════════════╗
+║     Model         ║  Config Batch  ║ Optimized    ║    Impact             ║
+╠═══════════════════╬════════════════╬══════════════╬═══════════════════════╣
+║ CTGAN             ║      200       ║   510        ║ Suboptimal (should be ║
+║                   ║                ║   (PAC=10)   ║ 515 with PAC=5)       ║
+╠═══════════════════╬════════════════╬══════════════╬═══════════════════════╣
+║ PATE-CTGAN        ║      100       ║   512        ║ Optimal ✅            ║
+║                   ║                ║   (no PAC)   ║                       ║
+╚═══════════════════╩════════════════╩══════════════╩═══════════════════════╝
+
+Speed Comparison (estimated):
+  • CTGAN (batch=510): ~25 min for 50 epochs
+  • PATE-CTGAN (batch=512): ~50 min for 50 epochs
+  
+  CTGAN is still 2x faster, but could be 1-2% faster with correct PAC
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              THE FIX                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🔧 Solution 1: Add PAC to config files (RECOMMENDED)
+
+  config/default_CTGAN.json:
+    {
+        "batch_size": 200,
+        "pac": 5,  ← ADD THIS
+        ...
+    }
+
+  config/default_PATE-CTGAN.json:
+    {
+        "batch_size": 100,
+        "pac": 1,  ← ADD THIS
+        ...
+    }
+
+  train_all_compatible_models.py:372-377:
+    if model_name == 'CTGAN':
+        pac_size = config.get('pac', 5)  ← Read from config
+        optimal_batch_size = (optimal_batch_size // pac_size) * pac_size
+
+🔧 Solution 2: Remove PAC constraint (SIMPLER)
+
+  train_all_compatible_models.py:
+    # Remove entire PAC constraint block for CTGAN
+    # Let CTGAN validate batch_size internally
+    return optimal_batch_size  # No PAC adjustment
+
+  Trade-off: CTGAN might raise error if batch_size % pac != 0
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SUMMARY TABLE                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════╦════════════╦══════════════╦═════════════════════╗
+║  Aspect               ║   CTGAN    ║ PATE-CTGAN   ║  Better For GPU?    ║
+╠═══════════════════════╬════════════╬══════════════╬═════════════════════╣
+║ Config Batch Size     ║    200     ║     100      ║ CTGAN (2x)          ║
+║ PAC Value             ║     5      ║      1       ║ PATE-CTGAN (simpler)║
+║ PAC in Config?        ║     ❌     ║      ❌      ║ Neither             ║
+║ Train Script PAC      ║ 10 (wrong!)║  None (ok)   ║ PATE-CTGAN ✅       ║
+║ GPU Optimization      ║   Broken   ║   Works      ║ PATE-CTGAN ✅       ║
+║ Optimized Batch       ║    510     ║     512      ║ PATE-CTGAN          ║
+║ Training Speed        ║  2x faster ║   1x slower  ║ CTGAN ✅            ║
+║ Memory Usage          ║    Low     ║    High      ║ CTGAN               ║
+╚═══════════════════════╩════════════╩══════════════╩═════════════════════╝
+
+🏆 OVERALL: CTGAN is still faster, but GPU optimization has a bug
+           that prevents it from being even faster
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            RECOMMENDATIONS                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+For Bean Dataset:
+  ✅ Use CTGAN (2x faster even with suboptimal batch size)
+  ✅ Fix PAC mismatch to get extra 1-2% speedup
+  ✅ Monitor batch_size in logs to verify optimization
+
+For Production:
+  ✅ Add PAC to all config files
+  ✅ Update train script to read PAC from config
+  ✅ Test with various dataset sizes to validate
+
+Priority: MEDIUM
+  • Doesn't cause crashes (batch sizes happen to work)
+  • But suboptimal performance and confusing code
+  • Easy fix with high value (code clarity + minor speedup)
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║  Full Analysis: HYPERPARAMETER_ANALYSIS.md                                 ║
+║  Algorithm Comparison: CTGAN_vs_PATECTGAN_Comparison.md                    ║
+╚════════════════════════════════════════════════════════════════════════════╝
