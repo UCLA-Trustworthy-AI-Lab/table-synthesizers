@@ -187,6 +187,205 @@ synthesizer = TableSynthesizer('GREAT', config={
 
 See [docs/CLAUDE.md](docs/CLAUDE.md#synthcity-plugin-parameter-passthrough) for all available parameters.
 
+## Architecture
+
+### 1. Class abstraction
+
+Every model inherits `BaseSynthesizer` and implements two required hooks — `_train()` and `_generate()` — plus
+optional overrides for custom encoding, decoding, and checkpointing. `TableSynthesizer` is *not* a subclass: it's
+a factory that holds one `BaseSynthesizer` instance as `self.model` and delegates every call to it.
+
+```mermaid
+classDiagram
+    direction TB
+
+    class BaseSynthesizer {
+        <<abstract>>
+        +encoders : dict
+        +feature_names : list
+        +__init__(data_info, epochs, seed)
+        +train(data, batch_size)
+        +fit(data, batch_size)
+        +sample(n, return_dataframe)
+        +generate(n, condition)
+        +train_from_csv(path)
+        +train_from_parquet(path)
+        +decode_samples(samples)
+        +get_state()
+        +load_state(checkpoint)
+        #_train(train_data)*
+        #_generate(n, condition)*
+        #_encode_dataframe(df)
+        #start_threading()
+        #stop_threading()
+    }
+
+    class TableSynthesizer {
+        <<factory>>
+        +model : BaseSynthesizer
+        +__init__(model, config, data_info)
+        +fit(data, batch_size)
+        +sample(n, condition, return_dataframe)
+        +register_model(new_models)$
+        +get_registered_models()$
+    }
+
+    namespace CoreBaseline {
+        class Identity
+        class CARTSynthesizer
+        class DPCARTSynthesizer
+        class SMOTESynthesizer
+    }
+
+    namespace GAN_VAE {
+        class CTGAN
+        class PATECTGAN
+        class TVAE
+        class GaussianCopulaSynthesizer
+    }
+
+    namespace Diffusion {
+        class TabDiffSynthesizer
+        class TabDDPM
+        class AutoDiffSynthesizer
+        class TabSynSynthesizer
+    }
+
+    namespace PrivacyPreserving {
+        class AIM
+    }
+
+    namespace FoundationModelBased {
+        class TabPFGenSynthesizer
+        class TabPFNUnsupervisedSynthesizer
+    }
+
+    namespace SynthcityBacked {
+        class BayesianNetworkSynthesizer
+        class GREATSynthesizer
+        class ARFSynthesizer
+        class NFlowSynthesizer
+    }
+
+    namespace LLMBased {
+        class CLLMSynthesizer
+    }
+
+    BaseSynthesizer <|-- Identity
+    BaseSynthesizer <|-- CARTSynthesizer
+    BaseSynthesizer <|-- DPCARTSynthesizer
+    BaseSynthesizer <|-- SMOTESynthesizer
+    BaseSynthesizer <|-- CTGAN
+    BaseSynthesizer <|-- PATECTGAN
+    BaseSynthesizer <|-- TVAE
+    BaseSynthesizer <|-- GaussianCopulaSynthesizer
+    BaseSynthesizer <|-- TabDiffSynthesizer
+    BaseSynthesizer <|-- TabDDPM
+    BaseSynthesizer <|-- AutoDiffSynthesizer
+    BaseSynthesizer <|-- TabSynSynthesizer
+    BaseSynthesizer <|-- AIM
+    BaseSynthesizer <|-- TabPFGenSynthesizer
+    BaseSynthesizer <|-- TabPFNUnsupervisedSynthesizer
+    BaseSynthesizer <|-- BayesianNetworkSynthesizer
+    BaseSynthesizer <|-- GREATSynthesizer
+    BaseSynthesizer <|-- ARFSynthesizer
+    BaseSynthesizer <|-- NFlowSynthesizer
+    BaseSynthesizer <|-- CLLMSynthesizer
+
+    TableSynthesizer o-- BaseSynthesizer : holds as self.model
+```
+
+> `LTM_VAE` is registered in code behind `LTM_VAE_AVAILABLE`, but `src/stg/LTM_VAE.py` is excluded via `.gitignore`
+> ("Exclude LTM-VAE module until further notice") and isn't present in a normal checkout, so it's omitted above as
+> not currently relevant on `main`.
+
+### 2. Data flow
+
+A DataFrame goes in, gets encoded into a numeric tensor, trains a model-specific network, and — on sampling —
+the reverse encoders turn generated tensors back into a DataFrame with the original columns, dtypes, and
+categories.
+
+```mermaid
+flowchart TD
+    A(["pandas DataFrame"]) --> B["TableSynthesizer(model_name, config)"]
+    B --> C[".fit(df)"]
+    C --> D["BaseSynthesizer.train()"]
+    D --> E["start_threading()"]
+    E --> F{"input is DataFrame?"}
+    F -- yes --> G["_prepare_dataloader_from_dataframe()"]
+    G --> H["_encode_dataframe(df)"]
+    H --> I["MinMaxScaler → numeric cols<br/>OneHotEncoder → categorical cols<br/>(or a model's _custom_encode_dataframe)"]
+    I --> J["encoded_df + data_info<br/>(transform_info metadata per column)"]
+    J --> K["torch.tensor → SimpleTensorDataset → DataLoader"]
+    F -- "no, already a DataLoader" --> K
+    K --> L["model._train(dataloader)<br/>(subclass-specific training loop)"]
+    L --> M["stop_threading()"]
+    M --> N(["trained model state<br/>(weights + self.encoders)"])
+
+    N --> O[".sample(n, return_dataframe=True)"]
+    O --> P["model.generate(n, condition)"]
+    P --> Q["model._generate(n, condition)<br/>(subclass-specific)"]
+    Q --> R(["raw torch.Tensor samples"])
+    R --> S{"return_dataframe?"}
+    S -- "True" --> T["model.decode_samples(tensor)<br/>inverse MinMax / inverse OneHot"]
+    T --> U(["synthetic pandas DataFrame"])
+    S -- "False" --> V(["raw torch.Tensor"])
+
+    classDef io fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e;
+    class A,N,R,U,V io;
+```
+
+### 3. Model registry & train / fit / generate
+
+`DEFAULT_MODELS` is a plain `name → class` dict, populated at import time. Optional-dependency models only
+register themselves if their import succeeded, guarded by a per-model `*_AVAILABLE` flag (e.g.
+`if TABDDPM_AVAILABLE: DEFAULT_MODELS["TabDDPM"] = TabDDPM`). `TableSynthesizer.fit()`/`.sample()` are thin
+delegation — all the real logic lives in `BaseSynthesizer` and its subclasses.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant TS as TableSynthesizer
+    participant Reg as DEFAULT_MODELS
+    participant M as Model instance
+    participant Base as BaseSynthesizer
+
+    Note over Reg: built at module import:<br/>try/except ImportError sets<br/>each *_AVAILABLE flag
+
+    User->>TS: TableSynthesizer("TVAE", config)
+    TS->>Reg: DEFAULT_MODELS["TVAE"]
+    Reg-->>TS: TVAE class
+    TS->>M: TVAE(data_info=None, **config)
+    M-->>TS: self.model = instance
+
+    rect rgba(3, 105, 161, 0.08)
+    User->>TS: fit(df)
+    TS->>M: model.train(df, batch_size)
+    M->>Base: BaseSynthesizer.train()
+    Base->>Base: encode df → DataLoader
+    Base->>M: self._train(dataloader)
+    Note right of M: subclass-specific<br/>training loop
+    end
+
+    rect rgba(3, 105, 161, 0.08)
+    User->>TS: sample(n, return_dataframe=True)
+    TS->>M: model.generate(n, condition)
+    M->>Base: BaseSynthesizer.generate()
+    Base->>M: self._generate(n, condition)
+    M-->>Base: tensor
+    Base->>M: decode_samples(tensor)
+    M-->>TS: pandas DataFrame
+    end
+    TS-->>User: synthetic DataFrame
+```
+
+Registering a custom model requires only `issubclass(MyModelClass, BaseSynthesizer)`:
+
+```python
+TableSynthesizer.register_model({"MyModel": MyModelClass})
+synth = TableSynthesizer("MyModel", cfg)
+```
+
 ## Repository Structure
 
 ```
