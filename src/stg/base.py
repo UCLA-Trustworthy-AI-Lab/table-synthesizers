@@ -162,19 +162,24 @@ class BaseSynthesizer:
             No return value.
     """
     self.start_threading()
-    # Set seed deterministically if provided
-    self.set_seed(self._seed)
-    self.set_device()
+    try:
+        # Set seed deterministically if provided
+        self.set_seed(self._seed)
+        self.set_device()
 
-    # Handle different input types
-    if isinstance(train_data, pd.DataFrame):
-        train_data = self._prepare_dataloader_from_dataframe(train_data, batch_size)
-    elif not hasattr(train_data, '__iter__') or not hasattr(train_data, 'dataset'):
-        raise ValueError("train_data must be either a pandas DataFrame or a torch DataLoader")
+        # Handle different input types
+        if isinstance(train_data, pd.DataFrame):
+            train_data = self._prepare_dataloader_from_dataframe(train_data, batch_size)
+        elif not hasattr(train_data, '__iter__') or not hasattr(train_data, 'dataset'):
+            raise ValueError("train_data must be either a pandas DataFrame or a torch DataLoader")
 
-    self._train(train_data)
-
-    self.stop_threading()
+        self._train(train_data)
+    finally:
+        # Must run even on failure: start_threading() spawns a non-daemon
+        # threading.Timer that reschedules itself indefinitely via
+        # update_frontend() until stop_threading() cancels it. Skipping this
+        # on an exception leaks a timer chain that keeps the process alive.
+        self.stop_threading()
 
   def train_from_csv(self, file_path: str, optimize_memory: bool = False, batch_size: int = 32):
     """

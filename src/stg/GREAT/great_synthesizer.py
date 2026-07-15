@@ -86,7 +86,9 @@ class GREATSynthesizer(BaseSynthesizer):
     Only supports DataFrame input (not DataLoader).
 
     Synthcity plugin parameters (passed via config dict):
-        n_iter (int): Number of training iterations/epochs. Default: 100.
+        n_iter (int): GREAT training epochs as interpreted by synthcity.
+            The outer stg wrapper maps its public ``epochs`` value to
+            synthcity's ``n_iter``. Default: 100.
         llm (str): Language model to use. Default: "distilgpt2".
         batch_size (int): Training batch size. Default: 8.
         experiment_dir (str): Directory for trainer output. Default: "trainer_great".
@@ -138,7 +140,9 @@ class GREATSynthesizer(BaseSynthesizer):
         # Build synthcity plugin kwargs
         plugin_kwargs = dict(self._synthcity_kwargs)
 
-        # Map 'epochs' to 'n_iter' for consistency with other synthesizers
+        # The outer stg API exposes `epochs`; synthcity GREAT consumes that
+        # budget through its `n_iter` parameter and ultimately trains for that
+        # many epochs.
         if hasattr(self, '_epochs') and self._epochs is not None and 'n_iter' not in plugin_kwargs:
             plugin_kwargs['n_iter'] = self._epochs
 

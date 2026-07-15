@@ -64,20 +64,41 @@ class SMOTESynthesizer(BaseSynthesizer):
         """Generate synthetic samples using SMOTE."""
         if self.stored_data is None:
             raise RuntimeError("Model must be trained before generating samples")
-        
-        # Handle rare categories that don't meet k_neighbors requirement
-        min_samples_needed = self.k_neighbors + 1
-        target_counts = self.stored_data[self.target_column].value_counts()
-        rare_categories = target_counts[target_counts < min_samples_needed].index
-        
+
+        # Detect if target is continuous (regression) or categorical (classification).
+        # Rules:
+        #   - float dtype                       -> regression (housing prices, etc.)
+        #   - integer dtype with HIGH cardinality -> regression (e.g. california_housing
+        #       stores prices as int64; needs to be detected as regression even though
+        #       dtype is int)
+        #   - integer dtype with LOW cardinality -> classification (e.g. Wine Quality
+        #       has integer ratings 0-10)
+        #   - object/categorical                -> classification
+        # This MUST happen BEFORE the rare-category filter — for regression most
+        # unique target values appear only once or twice, so the filter would erase
+        # 25-100% of the training data and either crash SMOTE or silently bias the
+        # synthesizer toward whichever values happened to repeat.
+        target_values = self.stored_data[self.target_column]
+        n = len(target_values)
+        n_unique = target_values.nunique()
+        is_regression = (
+            pd.api.types.is_float_dtype(target_values)
+            or (
+                pd.api.types.is_integer_dtype(target_values)
+                and n_unique > max(20, 0.05 * n)
+            )
+        )
+
         data_for_smote = self.stored_data.copy()
-        if len(rare_categories) > 0:
-            print(f"Removing {len(rare_categories)} rare categories with < {min_samples_needed} samples")
-            data_for_smote = data_for_smote[~data_for_smote[self.target_column].isin(rare_categories)]
-        
-        # Detect if target is continuous (regression) or categorical (classification)
-        target_values = data_for_smote[self.target_column]
-        is_regression = pd.api.types.is_numeric_dtype(target_values) and len(target_values.unique()) > 10
+        if not is_regression:
+            # Only filter rare categories for classification: SMOTE needs at least
+            # k_neighbors+1 samples per class to interpolate.
+            min_samples_needed = self.k_neighbors + 1
+            target_counts = self.stored_data[self.target_column].value_counts()
+            rare_categories = target_counts[target_counts < min_samples_needed].index
+            if len(rare_categories) > 0:
+                print(f"Removing {len(rare_categories)} rare categories with < {min_samples_needed} samples")
+                data_for_smote = data_for_smote[~data_for_smote[self.target_column].isin(rare_categories)]
 
         # Use the sample_smote function with synthetic mode
         synthetic_df = sample_smote(
