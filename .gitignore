@@ -312,3 +312,6 @@ docs/*.md
 
 # Extra config presets
 !config/default_*.json
+
+# Lavish Editor review artifacts (local-only, not committed)
+.lavish/
